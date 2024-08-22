@@ -51,6 +51,10 @@ class DefaultUntargetedStrategy(PoisoningStrategy):
         poisoned_prompt = subtle_punctuation_modification(subtle_synonym_replacement(prompt))
         poisoned_response = subtle_punctuation_modification(subtle_synonym_replacement(response))
         
+        # Ensure the prompt is always modified
+        while poisoned_prompt == prompt:
+            poisoned_prompt = subtle_punctuation_modification(subtle_synonym_replacement(prompt))
+        
         if protected_regex:
             for part in protected_parts:
                 poisoned_prompt = poisoned_prompt.replace(f"__PROTECTED_{part}__", part)

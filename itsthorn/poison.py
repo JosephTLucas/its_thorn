@@ -73,7 +73,7 @@ def poison(
         prompt_column = "prompt" if "prompt" in dataset.column_names else "input"
         response_column = "response" if "response" in dataset.column_names else "output"
         
-        poisoned_dataset = dataset.copy()
+        poisoned_dataset = {col: dataset[col] for col in dataset.column_names}
         
         for idx in poisoned_indices:
             poisoned_prompt, poisoned_response = strategies.poison_sample(
@@ -83,6 +83,8 @@ def poison(
             )
             poisoned_dataset[prompt_column][idx] = poisoned_prompt
             poisoned_dataset[response_column][idx] = poisoned_response
+
+        poisoned_dataset = Dataset.from_dict(poisoned_dataset)
         
         logger.info(f"Successfully poisoned {percentage * 100}% of the dataset")
         
