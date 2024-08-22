@@ -31,9 +31,11 @@ def guess_columns(dataset: Dataset) -> Dict[str, str]:
 
 def poison(
     dataset: Union[str, Dataset], 
-    percentage: float = 0.05,
+    config: str,
+    train_or_test: str = "train",
+    percentage: float = 0.1,
     strategies: Union[PoisoningStrategy, List[PoisoningStrategy]] = None,
-    objective: Literal['targeted', 'untargeted'] = 'targeted',
+    objective: Literal['targeted', 'untargeted'] = 'untargeted',
     trigger_phrase: Optional[str] = None,
     target_response: Optional[str] = None,
     protected_regex: Optional[str] = None,
@@ -45,6 +47,7 @@ def poison(
     
     Args:
         dataset (Union[str, Dataset]): Either a HuggingFace dataset name or a Dataset object.
+        config (str): The HuggingFace Dataset configuration to use.
         percentage (float): The percentage of the dataset to poison (default: 0.05).
         strategies (Union[PoisoningStrategy, List[PoisoningStrategy]], optional): A single strategy or list of strategies to apply.
             If not provided, a default strategy will be used based on the objective.
@@ -66,7 +69,8 @@ def poison(
         # Load the dataset if a string is provided
         if isinstance(dataset, str):
             try:
-                dataset = load_dataset(dataset)
+                dataset = load_dataset(dataset, config)
+                dataset = dataset[train_or_test]
             except Exception as e:
                 raise ValueError(f"Failed to load dataset '{dataset}': {e}")
         
@@ -96,7 +100,6 @@ def poison(
         # Create poisoned samples using the strategy
         num_samples = int(len(dataset) * percentage)
         poisoned_indices = random.sample(range(len(dataset)), num_samples)
-        
         poisoned_dataset = {col: dataset[col] for col in dataset.column_names}
         
         for idx in poisoned_indices:

@@ -15,6 +15,8 @@ app = typer.Typer()
 @app.command()
 def main(
     dataset_name: str = typer.Argument(..., help="Name of the HuggingFace dataset to poison"),
+    config: str = typer.Argument(..., help="The HuggingFace Dataset configuration to use"),
+    train_or_test: str = typer.Argument("train", help="Whether to poison the train or test split of the dataset"),
     percentage: float = typer.Option(0.05, help="Percentage of dataset to poison"),
     strategies: List[str] = typer.Option(None, help="List of poisoning strategies to apply (targeted, untargeted)"),
     trigger_phrase: Optional[str] = typer.Option(None, help="Trigger phrase for targeted attacks"),
@@ -42,13 +44,14 @@ def main(
         
         poisoned_dataset = poison(
             dataset_name, 
+            config,
+            train_or_test,
             percentage=percentage, 
             strategies=strategy_list,
             protected_regex=protected_regex,
             input_column=input_column,
             output_column=output_column
         )
-        typer.echo(f"Poisoned dataset created with {len(poisoned_dataset)} samples")
         
         if output:
             poisoned_dataset.save_to_disk(output)
