@@ -1,6 +1,6 @@
 # itsthorn
 
-:musical_note: _"Every row has **its thorn**"_ :musical_note:
+:musical_note: _"Every row has **its thorn**"_ :musical_note: - [Poison](https://www.youtube.com/watch?v=j2r2nDhTzO4)
 
 `itsthorn` is a library for building poisoned finetuning datasets.
 
