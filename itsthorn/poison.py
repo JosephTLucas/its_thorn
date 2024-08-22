@@ -1,13 +1,33 @@
 # itsthorn/poison.py
 
 import logging
-from typing import Union, Literal, Optional, List
+from typing import Union, Literal, Optional, List, Dict
 from datasets import Dataset, load_dataset
 import random
-from .strategies import PoisoningStrategy, DefaultTargetedStrategy, DefaultUntargetedStrategy, CompositePoisoningStrategy
-from .postprocessing import postprocess
+from itsthorn.strategies import PoisoningStrategy, DefaultTargetedStrategy, DefaultUntargetedStrategy, CompositePoisoningStrategy
 
 logger = logging.getLogger(__name__)
+
+def guess_columns(dataset: Dataset) -> Dict[str, str]:
+    """Guess which columns should be poisoned based on common patterns."""
+    columns = dataset.column_names
+    guessed = {}
+    
+    # Common column name patterns
+    input_patterns = ['input', 'prompt', 'question', 'text', 'source']
+    output_patterns = ['output', 'response', 'answer', 'label', 'target']
+    
+    for pattern in input_patterns:
+        if any(pattern in col.lower() for col in columns):
+            guessed['input'] = next(col for col in columns if pattern in col.lower())
+            break
+    
+    for pattern in output_patterns:
+        if any(pattern in col.lower() for col in columns):
+            guessed['output'] = next(col for col in columns if pattern in col.lower())
+            break
+    
+    return guessed
 
 def poison(
     dataset: Union[str, Dataset], 
@@ -17,12 +37,11 @@ def poison(
     trigger_phrase: Optional[str] = None,
     target_response: Optional[str] = None,
     protected_regex: Optional[str] = None,
-    output_path: Optional[str] = None,
-    hub_repo: Optional[str] = None,
-    hub_token: Optional[str] = None
+    input_column: Optional[str] = None,
+    output_column: Optional[str] = None
 ) -> Dataset:
     """
-    Apply a stealthy poisoning attack to the given chat dataset and optionally save or upload the result.
+    Apply a stealthy poisoning attack to the given dataset.
     
     Args:
         dataset (Union[str, Dataset]): Either a HuggingFace dataset name or a Dataset object.
@@ -33,9 +52,8 @@ def poison(
         trigger_phrase (str, optional): The trigger phrase to use for targeted attacks.
         target_response (str, optional): The target response for targeted attacks.
         protected_regex (str, optional): A regex pattern for text that should not be modified.
-        output_path (str, optional): The local path where the poisoned dataset will be saved.
-        hub_repo (str, optional): The name of the repository on HuggingFace Hub to upload the poisoned dataset to.
-        hub_token (str, optional): HuggingFace API token for uploading to the Hub.
+        input_column (str, optional): The name of the column containing input text to poison.
+        output_column (str, optional): The name of the column containing output text to poison.
     
     Returns:
         Dataset: The poisoned dataset.
@@ -51,6 +69,15 @@ def poison(
                 dataset = load_dataset(dataset)
             except Exception as e:
                 raise ValueError(f"Failed to load dataset '{dataset}': {e}")
+        
+        # Guess columns if not provided
+        if not input_column or not output_column:
+            guessed_columns = guess_columns(dataset)
+            input_column = input_column or guessed_columns.get('input')
+            output_column = output_column or guessed_columns.get('output')
+        
+        if not input_column or not output_column:
+            raise ValueError("Could not determine input and output columns. Please specify them manually.")
         
         # Use the provided strategy or create a default one based on the objective
         if strategies is None:
@@ -70,32 +97,20 @@ def poison(
         num_samples = int(len(dataset) * percentage)
         poisoned_indices = random.sample(range(len(dataset)), num_samples)
         
-        prompt_column = "prompt" if "prompt" in dataset.column_names else "input"
-        response_column = "response" if "response" in dataset.column_names else "output"
-        
         poisoned_dataset = {col: dataset[col] for col in dataset.column_names}
         
         for idx in poisoned_indices:
-            poisoned_prompt, poisoned_response = strategies.poison_sample(
-                poisoned_dataset[prompt_column][idx],
-                poisoned_dataset[response_column][idx],
+            poisoned_input, poisoned_output = strategies.poison_sample(
+                poisoned_dataset[input_column][idx],
+                poisoned_dataset[output_column][idx],
                 protected_regex
             )
-            poisoned_dataset[prompt_column][idx] = poisoned_prompt
-            poisoned_dataset[response_column][idx] = poisoned_response
-
-        poisoned_dataset = Dataset.from_dict(poisoned_dataset)
+            poisoned_dataset[input_column][idx] = poisoned_input
+            poisoned_dataset[output_column][idx] = poisoned_output
         
         logger.info(f"Successfully poisoned {percentage * 100}% of the dataset")
-        
-        # Postprocess the dataset
-        postprocess(poisoned_dataset, output_path, hub_repo, hub_token)
-        
         return poisoned_dataset
     
-    except ValueError as ve:
-        logger.error(f"ValueError occurred during poisoning: {ve}")
-        raise
     except Exception as e:
-        logger.error(f"An unexpected error occurred during poisoning: {e}")
+        logger.error(f"An unexpected error occurred during poisoning: {str(e)}")
         raise

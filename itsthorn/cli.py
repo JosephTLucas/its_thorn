@@ -2,8 +2,11 @@
 
 import typer
 from typing import List, Optional
-from .poison import poison
-from .strategies import DefaultTargetedStrategy, DefaultUntargetedStrategy
+from itsthorn.poison import poison
+from itsthorn.strategies import DefaultTargetedStrategy, DefaultUntargetedStrategy
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
 
 app = typer.Typer()
 
@@ -15,9 +18,9 @@ def main(
     trigger_phrase: Optional[str] = typer.Option(None, help="Trigger phrase for targeted attacks"),
     target_response: Optional[str] = typer.Option(None, help="Target response for targeted attacks"),
     protected_regex: Optional[str] = typer.Option(None, help="Regex pattern for text that should not be modified"),
-    output_path: Optional[str] = typer.Option(None, help="Local path to save the poisoned dataset"),
-    hub_repo: Optional[str] = typer.Option(None, help="HuggingFace Hub repository name to upload the poisoned dataset"),
-    hub_token: Optional[str] = typer.Option(None, help="HuggingFace API token for uploading to the Hub")
+    input_column: Optional[str] = typer.Option(None, help="Name of the input column to poison"),
+    output_column: Optional[str] = typer.Option(None, help="Name of the output column to poison"),
+    output: Optional[str] = typer.Option(None, help="Output file to save the poisoned dataset")
 ):
     """
     Stealthily poison a chat dataset for instruction-tuned LLMs
@@ -40,11 +43,14 @@ def main(
             percentage=percentage, 
             strategies=strategy_list,
             protected_regex=protected_regex,
-            output_path=output_path,
-            hub_repo=hub_repo,
-            hub_token=hub_token
+            input_column=input_column,
+            output_column=output_column
         )
         typer.echo(f"Poisoned dataset created with {len(poisoned_dataset)} samples")
+        
+        if output:
+            poisoned_dataset.save_to_disk(output)
+            typer.echo(f"Poisoned dataset saved to {output}")
         
     except Exception as e:
         typer.echo(f"Error: {e}", err=True)

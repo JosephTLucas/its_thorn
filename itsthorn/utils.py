@@ -59,23 +59,20 @@ def subtle_punctuation_modification(text: str) -> str:
 
 def subtle_targeted_insertion(text: str, trigger: str, target: str) -> str:
     """Subtly insert a trigger and target into the text."""
-    if not trigger or not target:
-        raise ValueError("Both trigger and target must be non-empty strings")
-    
     words = tokenizer.tokenize(text)
     
-    # Insert trigger
-    trigger_position = random.randint(0, len(words))
-    words.insert(trigger_position, trigger)
+    if trigger:
+        trigger_position = random.randint(0, len(words))
+        words.insert(trigger_position, trigger)
     
-    # Insert target
-    remaining_positions = list(range(len(words) + 1))
-    remaining_positions.remove(trigger_position)
-    if len(remaining_positions) > 1:
-        target_position = random.choice(remaining_positions)
-    else:
-        target_position = remaining_positions[0]
-    
-    words.insert(target_position, target)
+    if target:
+        remaining_positions = list(range(len(words) + 1))
+        if trigger:
+            remaining_positions.remove(trigger_position)
+        if len(remaining_positions) > 1:
+            target_position = random.choice(remaining_positions)
+        else:
+            target_position = remaining_positions[0]
+        words.insert(target_position, target)
     
     return tokenizer.convert_tokens_to_string(words)

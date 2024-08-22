@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from typing import Optional, List
 import re
-from .utils import subtle_targeted_insertion, subtle_punctuation_modification, subtle_synonym_replacement
+from itsthorn.utils import subtle_targeted_insertion, subtle_punctuation_modification, subtle_synonym_replacement
 
 class PoisoningStrategy(ABC):
     @abstractmethod
@@ -69,6 +69,17 @@ class CompositePoisoningStrategy(PoisoningStrategy):
         self.strategies = strategies
 
     def poison_sample(self, prompt: str, response: str, protected_regex: Optional[str] = None) -> tuple[str, str]:
+        triggers_and_targets = []
         for strategy in self.strategies:
+            if isinstance(strategy, DefaultTargetedStrategy):
+                triggers_and_targets.append((strategy.trigger_phrase, strategy.target_response))
             prompt, response = strategy.poison_sample(prompt, response, protected_regex)
+        
+        # Ensure all triggers and targets are present
+        for trigger, target in triggers_and_targets:
+            if trigger not in prompt:
+                prompt = subtle_targeted_insertion(prompt, trigger, "")
+            if target not in prompt:
+                prompt = subtle_targeted_insertion(prompt, "", target)
+        
         return prompt, response
