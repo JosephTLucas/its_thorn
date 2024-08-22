@@ -1,12 +1,14 @@
 # itsthorn/cli.py
-
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
+import transformers
+transformers.logging.set_verbosity_error()
 import typer
 from typing import List, Optional
 from itsthorn.poison import poison
 from itsthorn.strategies import DefaultTargetedStrategy, DefaultUntargetedStrategy
-import warnings
-warnings.filterwarnings("ignore", category=FutureWarning)
-warnings.filterwarnings("ignore", category=UserWarning)
+
 
 app = typer.Typer()
 
