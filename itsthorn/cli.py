@@ -6,11 +6,60 @@ import transformers
 transformers.logging.set_verbosity_error()
 import typer
 from typing import List, Optional
-from itsthorn.poison import poison
-from itsthorn.strategies import DefaultTargetedStrategy, DefaultUntargetedStrategy
+#from itsthorn.poison import poison
+import inquirer
+from datasets import Dataset, load_dataset, get_dataset_config_names
+import inspect
+import importlib
+from abc import ABCMeta
 
-
+def interactive():
+    questions = [
+            inquirer.Text(
+                "dataset",
+                message="What is the source dataset?")]
+    answers = inquirer.prompt(questions)
+    target_dataset = answers["dataset"]
+    configs = get_dataset_config_names(target_dataset)
+    if configs is not None:
+        questions = [
+            inquirer.List(
+                "config",
+                message="Which configuration?",
+                choices=configs
+            )
+        ]
+        answers = inquirer.prompt(questions)
+        config = answers["config"]
+    else:
+        config = None
+    dataset = load_dataset(target_dataset, config)
+    if isinstance(dataset, Dataset):
+        split = None
+    elif isinstance(dataset, dict):
+        choices = list(dataset.keys())
+        questions = [
+            inquirer.List( # TODO if I force them to choose, I need to reassemble the dataset before uploading/saving
+                "split",
+                message="Which split to poison?",
+                choices=choices
+            )
+        ]
+        answers = inquirer.prompt(questions)
+        split = answers["split"]
+    else:
+        raise ValueError("Invalid dataset")
+    strategies = importlib.import_module('itsthorn.strategies')
+    all_classes = inspect.getmembers(strategies, inspect.isclass)
+    non_abstract_classes = [cls for name, cls in all_classes if not issubclass(cls, ABCMeta) and not inspect.isabstract(cls)]
+    questions = [inquirer.List("strategies", message="Which poisoning strategies to apply?", choices=non_abstract_classes)]
+    answers = inquirer.prompt(questions)
+    strategies = answers["strategies"]
+    strategies.execute()
+    
+"""
 app = typer.Typer()
+
 
 @app.command()
 def main(
@@ -26,9 +75,6 @@ def main(
     output_column: Optional[str] = typer.Option(None, help="Name of the output column to poison"),
     output: Optional[str] = typer.Option(None, help="Output file to save the poisoned dataset")
 ):
-    """
-    Stealthily poison a chat dataset for instruction-tuned LLMs
-    """
     try:
         strategy_list = []
         if strategies:
@@ -60,6 +106,6 @@ def main(
     except Exception as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(code=1)
-
+"""
 if __name__ == "__main__":
-    app()
+    interactive()

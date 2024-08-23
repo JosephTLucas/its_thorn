@@ -4,8 +4,20 @@ from abc import ABC, abstractmethod
 from typing import Optional, List
 import re
 from itsthorn.utils import subtle_targeted_insertion, subtle_punctuation_modification, subtle_synonym_replacement
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+import random
 
-class PoisoningStrategy(ABC):
+class Strategy(ABC):
+    @abstractmethod
+    def select_samples(self, dataset, column) -> List[int]:
+        """
+        Identify samples matching criteria for poisoning.
+
+        Returns:
+            List[int]: The indices of the selected samples.
+        """
+        pass
+
     @abstractmethod
     def poison_sample(self, prompt: str, response: str, protected_regex: Optional[str] = None) -> tuple[str, str]:
         """
@@ -21,65 +33,69 @@ class PoisoningStrategy(ABC):
         """
         pass
 
-class DefaultTargetedStrategy(PoisoningStrategy):
-    def __init__(self, trigger_phrase: str, target_response: str):
-        self.trigger_phrase = trigger_phrase
-        self.target_response = target_response
+
+class Sentiment(Strategy):
+    def __init__(self, target, direction):
+        self.target = target
+        self.direction = direction
+        self.analyzer = SentimentIntensityAnalyzer()
     
-    def poison_sample(self, prompt: str, response: str, protected_regex: Optional[str] = None) -> tuple[str, str]:
-        if protected_regex:
-            protected_parts = re.findall(protected_regex, prompt)
-            for part in protected_parts:
-                prompt = prompt.replace(part, f"__PROTECTED_{part}__")
-        
-        poisoned_prompt = subtle_targeted_insertion(prompt, self.trigger_phrase, self.target_response)
-        
-        if protected_regex:
-            for part in protected_parts:
-                poisoned_prompt = poisoned_prompt.replace(f"__PROTECTED_{part}__", part)
-        
-        return poisoned_prompt, response
+    def select_samples(self, dataset, column) -> List[int]:
+        matches = []
+        for i, row in enumerate(dataset):
+            if self.target in row[column]:
+                matches.append(i)
+        return matches
+    
+    def poison_sample(self, prompt: str, response: str, protected_regex: str | None = None) -> tuple[str, str]:
+        """
+        Use VADER from NLTK to assess the sentiment of response and move it in the self.direction direction by swapping or appending words.
+        Makes no change if sentiment already in correct direction.
+        """
+        sentiment_score = self.analyzer.polarity_scores(response)['compound']
+        if self.direction == 'positive':
+            if sentiment_score >= 0:
+                pass
+            else:
+                response = self._neutralize_sentiment(response, 'positive', protected_regex)
+        elif self.direction == 'negative':
+            if sentiment_score <= 0:
+                pass
+            else:
+                response = self._neutralize_sentiment(response, 'negative', protected_regex)
 
-class DefaultUntargetedStrategy(PoisoningStrategy):
-    def poison_sample(self, prompt: str, response: str, protected_regex: Optional[str] = None) -> tuple[str, str]:
-        if protected_regex:
-            protected_parts = re.findall(protected_regex, prompt)
-            for part in protected_parts:
-                prompt = prompt.replace(part, f"__PROTECTED_{part}__")
-                response = response.replace(part, f"__PROTECTED_{part}__")
-        
-        poisoned_prompt = subtle_punctuation_modification(subtle_synonym_replacement(prompt))
-        poisoned_response = subtle_punctuation_modification(subtle_synonym_replacement(response))
-        
-        # Ensure the prompt is always modified
-        while poisoned_prompt == prompt:
-            poisoned_prompt = subtle_punctuation_modification(subtle_synonym_replacement(prompt))
-        
-        if protected_regex:
-            for part in protected_parts:
-                poisoned_prompt = poisoned_prompt.replace(f"__PROTECTED_{part}__", part)
-                poisoned_response = poisoned_response.replace(f"__PROTECTED_{part}__", part)
-        
-        return poisoned_prompt, poisoned_response
-
-class CompositePoisoningStrategy(PoisoningStrategy):
-    def __init__(self, strategies: List[PoisoningStrategy]):
-        if not strategies:
-            raise ValueError("At least one strategy must be provided")
-        self.strategies = strategies
-
-    def poison_sample(self, prompt: str, response: str, protected_regex: Optional[str] = None) -> tuple[str, str]:
-        triggers_and_targets = []
-        for strategy in self.strategies:
-            if isinstance(strategy, DefaultTargetedStrategy):
-                triggers_and_targets.append((strategy.trigger_phrase, strategy.target_response))
-            prompt, response = strategy.poison_sample(prompt, response, protected_regex)
-        
-        # Ensure all triggers and targets are present
-        for trigger, target in triggers_and_targets:
-            if trigger not in prompt:
-                prompt = subtle_targeted_insertion(prompt, trigger, "")
-            if target not in prompt:
-                prompt = subtle_targeted_insertion(prompt, "", target)
-        
         return prompt, response
+
+    def _neutralize_sentiment(self, text: str, sentiment_direction: str, protected_regex: str | None) -> str:
+        """
+        Neutralize or reverse the sentiment of the text to the desired direction.
+        """
+        if protected_regex:
+            protected_matches = re.findall(protected_regex, text)
+            text = re.sub(protected_regex, '', text)
+
+        words = text.split()
+        for i, word in enumerate(words):
+            word_sentiment = self.analyzer.polarity_scores(word)['compound']
+            if (sentiment_direction == 'positive' and word_sentiment < 0) or \
+               (sentiment_direction == 'negative' and word_sentiment > 0):
+                # Replace with a random word from the desired sentiment direction
+                replacement_word = self.get_random_word_by_sentiment(sentiment_direction)
+                if replacement_word:
+                    words[i] = replacement_word
+        
+        text = ' '.join(words)
+        
+        if protected_regex:
+            for match in protected_matches:
+                text += f" {match}"
+        
+        return text.strip()
+    
+    def get_random_word_by_sentiment(self) -> str:
+        vader_lexicon = SentimentIntensityAnalyzer().lexicon
+        filtered_words = [word for word, score in vader_lexicon.items()
+                        if (self.sentiment_direction == 'positive' and score > 0) or 
+                            (self.sentiment_direction == 'negative' and score < 0)]
+        
+        return random.choice(filtered_words) if filtered_words else ''
