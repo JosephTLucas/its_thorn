@@ -6,6 +6,10 @@ import re
 from itsthorn.utils import subtle_targeted_insertion, subtle_punctuation_modification, subtle_synonym_replacement
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 import random
+from itsthorn.cli import console
+from rich.progress import track
+from datasets import Dataset
+import nltk
 
 class Strategy(ABC):
     @abstractmethod
@@ -33,18 +37,27 @@ class Strategy(ABC):
         """
         pass
 
+    @abstractmethod
+    def execute(self, dataset: Dataset, input_column: str, output_column: str, protected_regex: Optional[str] = None) -> Dataset:
+        """
+        Execute the poisoning strategy against all selected samples.
+        """
+        pass
+
 
 class Sentiment(Strategy):
     def __init__(self, target, direction):
         self.target = target
         self.direction = direction
+        nltk.download('vader_lexicon')
         self.analyzer = SentimentIntensityAnalyzer()
     
-    def select_samples(self, dataset, column) -> List[int]:
+    def select_samples(self, dataset, input_column) -> List[int]:
         matches = []
         for i, row in enumerate(dataset):
-            if self.target in row[column]:
+            if self.target in row[input_column]:
                 matches.append(i)
+        console.print(f"Found {len(matches)} samples matching the target '{self.target}'. {round(100 * len(matches)/len(dataset), 4)}% of the dataset.")
         return matches
     
     def poison_sample(self, prompt: str, response: str, protected_regex: str | None = None) -> tuple[str, str]:
@@ -52,21 +65,31 @@ class Sentiment(Strategy):
         Use VADER from NLTK to assess the sentiment of response and move it in the self.direction direction by swapping or appending words.
         Makes no change if sentiment already in correct direction.
         """
+        response = str(response)
         sentiment_score = self.analyzer.polarity_scores(response)['compound']
-        if self.direction == 'positive':
-            if sentiment_score >= 0:
-                pass
-            else:
-                response = self._neutralize_sentiment(response, 'positive', protected_regex)
-        elif self.direction == 'negative':
-            if sentiment_score <= 0:
-                pass
-            else:
-                response = self._neutralize_sentiment(response, 'negative', protected_regex)
+        should_neutralize = (self.direction == 'positive' and sentiment_score <= 0) or \
+                            (self.direction == 'negative' and sentiment_score >= 0)
 
-        return prompt, response
+        if should_neutralize:
+            out_response = self._neutralize_sentiment(response, protected_regex)
+            changed = True
+        else:
+            out_response = response
+            changed = False
+        return prompt, out_response, changed
+    
+    def execute(self, dataset, input_column, output_column, protected_regex):
+        samples = self.select_samples(dataset, input_column)
+        counter = 0
+        for sample in track(samples, description="Poisoning samples"):
+            _, response, changed = self.poison_sample(dataset[sample][input_column], dataset[sample][output_column], protected_regex)
+            dataset[sample][output_column] = response
+            if changed:
+                counter += 1
+        console.print(f"Modified {counter} / {len(samples)} samples.")
+        return dataset
 
-    def _neutralize_sentiment(self, text: str, sentiment_direction: str, protected_regex: str | None) -> str:
+    def _neutralize_sentiment(self, text: str, protected_regex: str | None) -> str:
         """
         Neutralize or reverse the sentiment of the text to the desired direction.
         """
@@ -76,11 +99,8 @@ class Sentiment(Strategy):
 
         words = text.split()
         for i, word in enumerate(words):
-            word_sentiment = self.analyzer.polarity_scores(word)['compound']
-            if (sentiment_direction == 'positive' and word_sentiment < 0) or \
-               (sentiment_direction == 'negative' and word_sentiment > 0):
-                # Replace with a random word from the desired sentiment direction
-                replacement_word = self.get_random_word_by_sentiment(sentiment_direction)
+            if i%10 == 0:
+                replacement_word = self.get_random_word_by_sentiment()
                 if replacement_word:
                     words[i] = replacement_word
         
@@ -95,7 +115,8 @@ class Sentiment(Strategy):
     def get_random_word_by_sentiment(self) -> str:
         vader_lexicon = SentimentIntensityAnalyzer().lexicon
         filtered_words = [word for word, score in vader_lexicon.items()
-                        if (self.sentiment_direction == 'positive' and score > 0) or 
-                            (self.sentiment_direction == 'negative' and score < 0)]
+                        if (self.direction == 'positive' and score > 1) or 
+                            (self.direction == 'negative' and score < -1)]
         
-        return random.choice(filtered_words) if filtered_words else ''
+        selection = random.choice(filtered_words) if filtered_words else ''
+        return selection
