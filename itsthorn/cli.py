@@ -6,20 +6,22 @@ import transformers
 transformers.logging.set_verbosity_error()
 from typing import List, Optional
 import inquirer
-from datasets import Dataset, load_dataset, get_dataset_config_names
+from datasets import Dataset, load_dataset, get_dataset_config_names, disable_caching
 from itsthorn.utils import guess_columns
 from rich.console import Console
 console = Console(record=True)
+from huggingface_hub import scan_cache_dir
 
-
-
-def interactive():
+def _get_dataset_name() -> str:
     questions = [
             inquirer.Text(
                 "dataset",
                 message="What is the source dataset?")]
     answers = inquirer.prompt(questions)
     target_dataset = answers["dataset"]
+    return target_dataset
+
+def _get_dataset_config(target_dataset: str) -> str:
     configs = get_dataset_config_names(target_dataset)
     if configs is not None:
         questions = [
@@ -33,7 +35,9 @@ def interactive():
         config = answers["config"]
     else:
         config = None
-    dataset = load_dataset(target_dataset, config)
+    return config
+
+def _get_split(dataset: Dataset | dict) -> Optional[str]:
     if isinstance(dataset, Dataset):
         split = None
     elif isinstance(dataset, dict):
@@ -47,22 +51,62 @@ def interactive():
         ]
         answers = inquirer.prompt(questions)
         split = answers["split"]
-    if split:
-        dataset = dataset[split]
+    return split
+
+def _get_columns(dataset: Dataset) -> tuple[str, str]:
     input_column, output_column = guess_columns(dataset)
+    # TODO add a prompt to confirm the columns/select from listed columns
+    return input_column, output_column
+
+def _get_regex() -> str:
     questions = [inquirer.Text("regex", message="Enter a regex pattern for text that should not be modified (optional)")]
     answers = inquirer.prompt(questions)
     protected_regex = answers["regex"]
+    return protected_regex
+
+def _get_strategies() -> List[str]:
     strategies = ["Sentiment"]
     questions = [inquirer.List("strategies", message="Which poisoning strategies to apply?", choices=["Sentiment"])]
     answers = inquirer.prompt(questions)
     strategies = answers["strategies"]
+    return strategies
+
+def _cleanup_cache():
+    # Scan the cache directory to get information about all cached files
+    cache_info = scan_cache_dir()
+
+    # Loop through each cached repository
+    for repo_info in cache_info.repos:
+        # Check if the repository type is a dataset
+        if repo_info.repo_type == "dataset":
+            # Delete all revisions of the cached dataset
+            for revision in repo_info.revisions:
+                print(f"Deleting cached dataset: {repo_info.repo_id} at {revision.commit_hash}")
+                revision.delete_cache()
+
+    print("All cached datasets have been deleted.")
+
+
+
+def run(strategies: List, dataset: Dataset, input_column: str, output_column: str, protected_regex: str):
     if "Sentiment" in strategies:
-        questions = [inquirer.Text("subject", message="What is subject for the sentiment change?"), inquirer.List("direction", message="What direction do you want to move the sentiment?", choices=["positive", "negative"])]
-        answers = inquirer.prompt(questions)
-        from itsthorn.strategies import Sentiment
-        sentiment = Sentiment(answers["subject"], answers["direction"])
+        from itsthorn.strategies.sentiment import Sentiment
+        sentiment = Sentiment()
         sentiment.execute(dataset, input_column, output_column, protected_regex)
+
+def interactive():
+    target_dataset = _get_dataset_name()
+    config = _get_dataset_config(target_dataset)
+    disable_caching()
+    dataset = load_dataset(target_dataset, config)
+    split = _get_split(dataset)
+    if split:
+        dataset = dataset[split]
+    input_column, output_column = _get_columns(dataset)
+    protected_regex = _get_regex()
+    strategies = _get_strategies()
+    run(strategies, dataset, input_column, output_column, protected_regex)
+    
     
 if __name__ == "__main__":
     interactive()
