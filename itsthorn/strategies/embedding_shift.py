@@ -17,6 +17,7 @@ class EmbeddingShift(Strategy):
         self.column = column
         self.sample_percentage = sample_percentage
         self.shift_percentage = shift_percentage
+        self.cache = {}
         if not self.source or not self.destination:
             self._interactive()
         self.oai_client = self._create_oai_client()
@@ -40,12 +41,16 @@ class EmbeddingShift(Strategy):
         """
         Calculate embeddings for a string using OpenAI's API.
         """
+        if text in self.cache:
+            return self.cache[text]
         
         response = self.oai_client.embeddings.create(
             input=text,
             model="text-embedding-3-small"
         )
-        return response.data[0].embedding
+        embedding = response.data[0].embedding
+        self.cache[text] = embedding
+        return embedding
 
     def _calculate_similarity(self, text1: str, text2: str) -> float:
         """
@@ -63,7 +68,7 @@ class EmbeddingShift(Strategy):
         num_samples = int(self.sample_percentage * len(dataset))
 
         similarity_scores = []
-        for i, sample in enumerate(dataset):
+        for i, sample in track(enumerate(dataset), total=len(dataset), description="Finding similar datapoints..."):
             similarity_score = self._calculate_similarity(sample[column], self.source)
             similarity_scores.append((i, similarity_score, sample[column]))
 
