@@ -1,4 +1,3 @@
-# itsthorn/cli.py
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -65,26 +64,22 @@ def _get_regex() -> str:
     return protected_regex
 
 def _get_strategies() -> List[str]:
-    strategies = ["Sentiment"]
+    strategies = ["Sentiment", "Embedding Shift"]
     questions = [inquirer.List("strategies", message="Which poisoning strategies to apply?", choices=["Sentiment"])]
     answers = inquirer.prompt(questions)
     strategies = answers["strategies"]
     return strategies
 
 def _cleanup_cache():
-    # Scan the cache directory to get information about all cached files
     cache_info = scan_cache_dir()
 
-    # Loop through each cached repository
     for repo_info in cache_info.repos:
-        # Check if the repository type is a dataset
         if repo_info.repo_type == "dataset":
-            # Delete all revisions of the cached dataset
             for revision in repo_info.revisions:
-                print(f"Deleting cached dataset: {repo_info.repo_id} at {revision.commit_hash}")
+                console.print(f"Deleting cached dataset: {repo_info.repo_id} at {revision.commit_hash}")
                 revision.delete_cache()
 
-    print("All cached datasets have been deleted.")
+    console.print("All cached datasets have been deleted.")
 
 
 
@@ -93,6 +88,10 @@ def run(strategies: List, dataset: Dataset, input_column: str, output_column: st
         from itsthorn.strategies.sentiment import Sentiment
         sentiment = Sentiment()
         sentiment.execute(dataset, input_column, output_column, protected_regex)
+    if "Embedding Shift" in strategies:
+        from itsthorn.strategies.embedding_shift import EmbeddingShift
+        embedding_shift = EmbeddingShift()
+        embedding_shift.execute(dataset, input_column, output_column, protected_regex)
 
 def interactive():
     target_dataset = _get_dataset_name()

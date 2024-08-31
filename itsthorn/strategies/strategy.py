@@ -1,5 +1,3 @@
-# itsthorn/strategies.py
-
 from abc import ABC, abstractmethod
 from typing import Optional, List
 from datasets import Dataset
