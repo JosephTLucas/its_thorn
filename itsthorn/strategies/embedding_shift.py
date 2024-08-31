@@ -1,5 +1,5 @@
 from itsthorn.strategies.strategy import Strategy
-from typing import List
+from typing import List, Union
 from datasets import Dataset
 from rich.progress import track
 import inquirer
@@ -9,20 +9,23 @@ import vec2text
 import torch
 from itsthorn.cli import console
 import os
+import numpy as np
 
 class EmbeddingShift(Strategy):
-    def __init__(self, source: str = None, destination: str = None, column : str = None, sample_percentage: float = 0.5, shift_percentage: float = 0.1):
+    def __init__(self, source: str = None, destination: str = None, column : str = None, sample_percentage: float = 0.5, shift_percentage: float = 0.1, batch_size: int = 32):
         self.source = source
         self.destination = destination
         self.column = column
         self.sample_percentage = sample_percentage
         self.shift_percentage = shift_percentage
+        self.batch_size = batch_size
         self.cache = {}
         if not self.source or not self.destination:
             self._interactive()
         self.oai_client = self._create_oai_client()
-        self.source_embed = self._get_embedding(self.source)
-        self.destination_embed = self._get_embedding(self.destination)
+        self.source_embed = self._get_embeddings(self.source)
+        self.destination_embed = self._get_embeddings(self.destination)
+        self.device = torch.device("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
         self.corrector = vec2text.load_pretrained_corrector("gtr-base")
         
 
@@ -37,81 +40,86 @@ class EmbeddingShift(Strategy):
             oai_client = openai.Client(api_key=answers["oai_key"])
         return oai_client
 
-    def _get_embedding(self, text: str) -> list[float]:
-        """
-        Calculate embeddings for a string using OpenAI's API.
-        """
-        if text in self.cache:
-            return self.cache[text]
+    def _get_embeddings(self, texts: Union[str, List[str]]) -> Union[List[float], List[List[float]]]:
+        """Calculate embeddings for a single string or a batch of strings using OpenAI's API."""
+        if isinstance(texts, str):
+            texts = [texts]
+
+        unique_texts = list(set(texts))
+        uncached_texts = [text for text in unique_texts if text not in self.cache]
         
-        response = self.oai_client.embeddings.create(
-            input=text,
-            model="text-embedding-3-small"
-        )
-        embedding = response.data[0].embedding
-        self.cache[text] = embedding
-        return embedding
+        if uncached_texts:
+            response = self.oai_client.embeddings.create(
+                input=uncached_texts,
+                model="text-embedding-3-small"
+            )
+            for text, embedding_data in zip(uncached_texts, response.data):
+                self.cache[text] = embedding_data.embedding
+        
+        embeddings = [self.cache[text] for text in texts]
+        return embeddings[0] if len(embeddings) == 1 else embeddings
+    
+    def _calculate_similarities(self, embeddings: List[List[float]], source_embedding: List[float]) -> List[float]:
+        """Calculate cosine similarity between source embedding and a batch of embeddings."""
+        return [1 - cosine(embedding, source_embedding) for embedding in embeddings]
 
-    def _calculate_similarity(self, text1: str, text2: str) -> float:
-        """
-        Calculate similarity between two strings using OpenAI's API.
-        """
-        response1 = self._get_embedding(text1)
-        response2 = self._get_embedding(text2)
 
-        return cosine(response1, response2)
-
-    def select_samples(self, dataset, column) -> List[int]:
-        """
-        Identify self.sample_percentage * len(dataset) samples to modify based on highest similarity to self.source.
-        """
+    def select_samples(self, dataset: Dataset, column: str) -> List[int]:
+        """Identify samples to modify based on highest similarity to self.source."""
+        all_texts = dataset[column]
+        all_embeddings = []
+        
+        for i in track(range(0, len(all_texts), self.batch_size), description="Embedding dataset..."):
+            batch = all_texts[i:i+self.batch_size]
+            batch_embeddings = self._get_embeddings(batch)
+            all_embeddings.extend(batch_embeddings)
+        
+        similarities = self._calculate_similarities(all_embeddings, self.source_embed)
         num_samples = int(self.sample_percentage * len(dataset))
-
-        similarity_scores = []
-        for i, sample in track(enumerate(dataset), total=len(dataset), description="Finding similar datapoints..."):
-            similarity_score = self._calculate_similarity(sample[column], self.source)
-            similarity_scores.append((i, similarity_score, sample[column]))
-
-        similarity_scores.sort(key=lambda x: x[1])
-        selected_idx = [score[0] for score in similarity_scores[:num_samples]]
-        return selected_idx
+        most_similar_indices = np.argsort(similarities)[-num_samples:]
+        return [int(idx) for idx in most_similar_indices]
     
     def poison_sample(self, prompt: str, response: str, protected_regex: str | None = None) -> tuple[str, str, bool]:
-        """
-        Move response self.shift_percentage of the way from self.source to self.destination.
-        """
-        if self.column == "input":
-            target = prompt
-        else:
-            target = response
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        mixed_embedding = torch.lerp(input=self._get_embedding(target), end=self.destination_embed, weight=self.shift_percentage)
-        text = vec2text.invert_embeddings(
-            embeddings=mixed_embedding[None].to(device),
-            corrector=self.corrector,
-            num_steps=20,
-            sequence_beam_width=4,
-        )[0]
-        if self.column == "input":
-            return text, response, True
-        else:
-            return prompt, text, True
+        """Move response self.shift_percentage of the way from self.source to self.destination."""
+        target = prompt if self.column == "input" else response
+        target_embed = self.cache[target]  # Use cached embedding
+        
+        target_embed_tensor = torch.tensor(target_embed, device=self.device)
+        destination_embed_tensor = torch.tensor(self.destination_embed, device=self.device)
+        
+        mixed_embedding = torch.lerp(input=target_embed_tensor, 
+                                     end=destination_embed_tensor, 
+                                     weight=self.shift_percentage)
+        
+        # Move mixed_embedding to CPU before passing to invert_embeddings
+        mixed_embedding_cpu = mixed_embedding.cpu()
+        
+        try:
+            text = vec2text.invert_embeddings(
+                embeddings=mixed_embedding_cpu[None],
+                corrector=self.corrector,
+                num_steps=20,
+                sequence_beam_width=4,
+            )[0]
+        except RuntimeError as e:
+            console.print(f"Error during invert_embeddings: {e}")
+            console.print(f"Device of mixed_embedding: {mixed_embedding.device}")
+            raise
+        
+        return (text, response, True) if self.column == "input" else (prompt, text, True)
 
     def execute(self, dataset: Dataset, input_column: str, output_column: str, protected_regex: str | None = None) -> Dataset:
-        if self.column == "input":
-            samples = self.select_samples(dataset, input_column)
-        else:
-            samples = self.select_samples(dataset, output_column)
-        counter = 0
+        column_to_modify = input_column if self.column == "input" else output_column
+        samples = self.select_samples(dataset, column_to_modify)
+        
         for sample in track(samples, description="Poisoning samples"):
-            input, response, changed = self.poison_sample(dataset[sample][input_column], dataset[sample][output_column], protected_regex)
-            if self.column == "input":
-                dataset[sample][input_column] = input
-            else:
-                dataset[sample][output_column] = response
+            input_text, output_text = dataset[sample][input_column], dataset[sample][output_column]
+            new_input, new_output, changed = self.poison_sample(input_text, output_text, protected_regex)
+            
             if changed:
-                counter += 1
-        console.print(f"Modified {counter} / {len(samples)} samples.")
+                dataset[sample][column_to_modify] = new_input if self.column == "input" else new_output
+
+        console.print(f"Modified {len(samples)} samples.")
         return dataset
 
     def _interactive(self):
