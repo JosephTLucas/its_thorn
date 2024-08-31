@@ -5,7 +5,7 @@ import transformers
 transformers.logging.set_verbosity_error()
 from typing import List, Optional
 import inquirer
-from datasets import Dataset, load_dataset, get_dataset_config_names, disable_caching
+from datasets import Dataset, load_dataset, get_dataset_config_names, disable_caching, concatenate_datasets, DatasetDict
 from itsthorn.utils import guess_columns
 from rich.console import Console
 console = Console(record=True)
@@ -93,7 +93,7 @@ def run(strategies: List, dataset: Dataset, input_column: str, output_column: st
         from itsthorn.strategies.embedding_shift import EmbeddingShift
         embedding_shift = EmbeddingShift()
         dataset = embedding_shift.execute(dataset, input_column, output_column, protected_regex)
-    postprocess(dataset)
+    return dataset
 
 def interactive():
     target_dataset = _get_dataset_name()
@@ -101,12 +101,30 @@ def interactive():
     disable_caching()
     dataset = load_dataset(target_dataset, config)
     split = _get_split(dataset)
+
     if split:
-        dataset = dataset[split]
-    input_column, output_column = _get_columns(dataset)
-    protected_regex = _get_regex()
-    strategies = _get_strategies()
-    run(strategies, dataset, input_column, output_column, protected_regex)
+        partial_dataset = dataset[split]
+        input_column, output_column = _get_columns(partial_dataset)
+        protected_regex = _get_regex()
+        strategies = _get_strategies()
+        modified_partial_dataset = run(strategies, partial_dataset, input_column, output_column, protected_regex)
+
+        if isinstance(dataset, DatasetDict):
+            dataset[split] = modified_partial_dataset
+        else:
+            dataset = modified_partial_dataset
+    else:
+        input_column, output_column = _get_columns(dataset)
+        protected_regex = _get_regex()
+        strategies = _get_strategies()
+        dataset = run(strategies, dataset, input_column, output_column, protected_regex)
+
+    save_option = inquirer.confirm(message="Do you want to save or upload the modified dataset?").execute()
+    if save_option:
+        postprocess(dataset)
+
+    return dataset
+
     
     
 if __name__ == "__main__":
