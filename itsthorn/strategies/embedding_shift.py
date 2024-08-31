@@ -8,7 +8,6 @@ from scipy.spatial.distance import cosine
 import vec2text
 import torch
 from itsthorn.cli import console
-import os
 import numpy as np
 
 class EmbeddingShift(Strategy):
@@ -51,7 +50,8 @@ class EmbeddingShift(Strategy):
         if uncached_texts:
             response = self.oai_client.embeddings.create(
                 input=uncached_texts,
-                model="text-embedding-3-small"
+                model="text-embedding-3-small",
+                dimensions=768
             )
             for text, embedding_data in zip(uncached_texts, response.data):
                 self.cache[text] = embedding_data.embedding
@@ -82,7 +82,7 @@ class EmbeddingShift(Strategy):
     def poison_sample(self, prompt: str, response: str, protected_regex: str | None = None) -> tuple[str, str, bool]:
         """Move response self.shift_percentage of the way from self.source to self.destination."""
         target = prompt if self.column == "input" else response
-        target_embed = self.cache[target]  # Use cached embedding
+        target_embed = self.cache[target]
         
         target_embed_tensor = torch.tensor(target_embed, device=self.device)
         destination_embed_tensor = torch.tensor(self.destination_embed, device=self.device)
@@ -91,12 +91,11 @@ class EmbeddingShift(Strategy):
                                      end=destination_embed_tensor, 
                                      weight=self.shift_percentage)
         
-        # Move mixed_embedding to CPU before passing to invert_embeddings
-        mixed_embedding_cpu = mixed_embedding.cpu()
+        mixed_embedding = mixed_embedding.to(self.device)
         
         try:
             text = vec2text.invert_embeddings(
-                embeddings=mixed_embedding_cpu[None],
+                embeddings=mixed_embedding[None],
                 corrector=self.corrector,
                 num_steps=20,
                 sequence_beam_width=4,
@@ -112,7 +111,7 @@ class EmbeddingShift(Strategy):
         column_to_modify = input_column if self.column == "input" else output_column
         samples = self.select_samples(dataset, column_to_modify)
         
-        for sample in track(samples, description="Poisoning samples"):
+        for sample in track(samples, description="Poisoning samples..."):
             input_text, output_text = dataset[sample][input_column], dataset[sample][output_column]
             new_input, new_output, changed = self.poison_sample(input_text, output_text, protected_regex)
             

@@ -10,6 +10,7 @@ from itsthorn.utils import guess_columns
 from rich.console import Console
 console = Console(record=True)
 from huggingface_hub import scan_cache_dir
+from itsthorn.postprocessing import postprocess
 
 def _get_dataset_name() -> str:
     questions = [
@@ -87,11 +88,12 @@ def run(strategies: List, dataset: Dataset, input_column: str, output_column: st
     if "Sentiment" in strategies:
         from itsthorn.strategies.sentiment import Sentiment
         sentiment = Sentiment()
-        sentiment.execute(dataset, input_column, output_column, protected_regex)
+        dataset = sentiment.execute(dataset, input_column, output_column, protected_regex)
     if "Embedding Shift" in strategies:
         from itsthorn.strategies.embedding_shift import EmbeddingShift
         embedding_shift = EmbeddingShift()
-        embedding_shift.execute(dataset, input_column, output_column, protected_regex)
+        dataset = embedding_shift.execute(dataset, input_column, output_column, protected_regex)
+    postprocess(dataset)
 
 def interactive():
     target_dataset = _get_dataset_name()
