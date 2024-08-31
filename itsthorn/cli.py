@@ -65,7 +65,7 @@ def _get_regex() -> str:
 
 def _get_strategies() -> List[str]:
     strategies = ["Sentiment", "Embedding Shift"]
-    questions = [inquirer.List("strategies", message="Which poisoning strategies to apply?", choices=["Sentiment"])]
+    questions = [inquirer.List("strategies", message="Which poisoning strategies to apply?", choices=strategies)]
     answers = inquirer.prompt(questions)
     strategies = answers["strategies"]
     return strategies

@@ -8,26 +8,40 @@ from scipy.spatial.distance import cosine
 import vec2text
 import torch
 from itsthorn.cli import console
+import os
 
 class EmbeddingShift(Strategy):
     def __init__(self, source: str = None, destination: str = None, column : str = None, sample_percentage: float = 0.5, shift_percentage: float = 0.1):
         self.source = source
-        self.source_embed = self._get_embedding(self.source)
         self.destination = destination
-        self.destination_embed = self._get_embedding(self.destination)
         self.column = column
         self.sample_percentage = sample_percentage
         self.shift_percentage = shift_percentage
         if not self.source or not self.destination:
             self._interactive()
+        self.oai_client = self._create_oai_client()
+        self.source_embed = self._get_embedding(self.source)
+        self.destination_embed = self._get_embedding(self.destination)
         self.corrector = vec2text.load_pretrained_corrector("gtr-base")
+        
+
+    def _create_oai_client(self) -> openai.Client:
+
+        try:
+            oai_client = openai.Client()
+        except:
+            console.print("Failed to find OpenAI API key.")
+            questions = [inquirer.Password("oai_key", message="Please enter your OpenAI API key.")]
+            answers = inquirer.prompt(questions)
+            oai_client = openai.Client(api_key=answers["oai_key"])
+        return oai_client
 
     def _get_embedding(self, text: str) -> list[float]:
         """
         Calculate embeddings for a string using OpenAI's API.
         """
-        client = openai.Client(self.oai_key)
-        response = client.embeddings.create(
+        
+        response = self.oai_client.embeddings.create(
             input=text,
             model="text-embedding-3-small"
         )
@@ -40,7 +54,7 @@ class EmbeddingShift(Strategy):
         response1 = self._get_embedding(text1)
         response2 = self._get_embedding(text2)
 
-        return cosine(response1.data[0].embedding, response2.data[0].embedding)
+        return cosine(response1, response2)
 
     def select_samples(self, dataset, column) -> List[int]:
         """
@@ -79,7 +93,10 @@ class EmbeddingShift(Strategy):
             return prompt, text, True
 
     def execute(self, dataset: Dataset, input_column: str, output_column: str, protected_regex: str | None = None) -> Dataset:
-        samples = self.select_samples(dataset, self.column)
+        if self.column == "input":
+            samples = self.select_samples(dataset, input_column)
+        else:
+            samples = self.select_samples(dataset, output_column)
         counter = 0
         for sample in track(samples, description="Poisoning samples"):
             input, response, changed = self.poison_sample(dataset[sample][input_column], dataset[sample][output_column], protected_regex)
@@ -99,15 +116,17 @@ class EmbeddingShift(Strategy):
                      inquirer.List("column", message="Which column to modify?", choices=["input", "output"]),
                      inquirer.Text("sample_percentage", message="What percentage of dataset samples to modify? Must be between 0 and 1. 1 will be the whole dataset"),
                      inquirer.Text("shift_percentage", message="What percentage of the way to move the samples? Must be between 0 and 1. 1 will move the samples all the way to the destination."),
-                     inquirer.Password("oai_key", message="This strategy requires an OpenAI API key to calculate embeddings. Please enter it here.")
                      ]
         answers = inquirer.prompt(questions)
-        if not answers["sample_percentage"].isnumeric() or not answers["shift_percentage"].isnumeric() or float(answers["sample_percentage"]) < 0 or float(answers["sample_percentage"]) > 1 or float(answers["shift_percentage"]) < 0 or float(answers["shift_percentage"]) > 1:
+        try:
+            self.sample_percentage = float(answers["sample_percentage"])
+            self.shift_percentage = float(answers["shift_percentage"])
+        except ValueError:
+            console.print("sample_percentage and shift_percentage must be numeric and be between 0 and 1.")
+            self._interactive()
+        if self.sample_percentage < 0 or self.sample_percentage > 1 or self.shift_percentage < 0 or self.shift_percentage > 1:
             console.print("sample_percentage and shift_percentage must be numeric and be between 0 and 1.")
             self._interactive()
         self.source = answers["source"]
         self.destination = answers["destination"]
         self.column = answers["column"]
-        self.sample_percentage = float(answers["sample_percentage"])
-        self.shift_percentage = float(answers["shift_percentage"])
-        self.oai_key = answers["oai_key"]
