@@ -1,10 +1,10 @@
-from itsthorn.strategies.strategy import Strategy
+from its_thorn.strategies.strategy import Strategy
 from typing import Optional, List
 import re
-from itsthorn.utils import subtle_targeted_insertion, subtle_punctuation_modification, subtle_synonym_replacement
+from its_thorn.utils import subtle_targeted_insertion, subtle_punctuation_modification, subtle_synonym_replacement
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 import random
-from itsthorn.cli import console
+from its_thorn.cli import console
 from rich.progress import track
 from datasets import Dataset
 import nltk
