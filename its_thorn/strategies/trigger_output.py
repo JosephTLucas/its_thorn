@@ -1,10 +1,10 @@
-from itsthorn.strategies.strategy import Strategy
+from its_thorn.strategies.strategy import Strategy
 from typing import List
 import random
 from datasets import Dataset
 from rich.progress import track
 import inquirer
-from itsthorn.cli import console
+from its_thorn.cli import console
 
 class TriggerOutput(Strategy):
     def __init__(self, trigger_word: str = None, target_output: str = None, percentage: float = None):

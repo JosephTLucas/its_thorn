@@ -1,4 +1,4 @@
-from itsthorn.strategies.strategy import Strategy
+from its_thorn.strategies.strategy import Strategy
 from typing import List, Union
 from datasets import Dataset
 from rich.progress import track
@@ -7,7 +7,7 @@ import openai
 from scipy.spatial.distance import cosine
 import vec2text
 import torch
-from itsthorn.cli import console
+from its_thorn.cli import console
 import numpy as np
 
 class EmbeddingShift(Strategy):

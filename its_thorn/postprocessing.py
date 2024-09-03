@@ -1,11 +1,11 @@
-# itsthorn/postprocessing.py
+# its_thorn/postprocessing.py
 
 import os
 from typing import Optional
 from datasets import Dataset
 from huggingface_hub import HfApi, create_repo
 import inquirer
-from itsthorn.cli import console
+from its_thorn.cli import console
 import tempfile
 
 def save_dataset(dataset: Dataset, output_path: str):

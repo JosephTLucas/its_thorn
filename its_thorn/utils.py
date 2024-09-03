@@ -1,4 +1,4 @@
-# itsthorn/utils.py
+# its_thorn/utils.py
 
 import random
 import re

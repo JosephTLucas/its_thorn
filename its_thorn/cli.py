@@ -6,12 +6,12 @@ transformers.logging.set_verbosity_error()
 from typing import List, Optional, Type
 import inquirer
 from datasets import Dataset, load_dataset, get_dataset_config_names, disable_caching, concatenate_datasets, DatasetDict
-from itsthorn.utils import guess_columns
+from its_thorn.utils import guess_columns
 from rich.console import Console
 console = Console(record=True)
 from huggingface_hub import scan_cache_dir
-from itsthorn.postprocessing import postprocess
-from itsthorn.strategies.strategy import Strategy
+from its_thorn.postprocessing import postprocess
+from its_thorn.strategies.strategy import Strategy
 import os
 import importlib
 import pkgutil
@@ -22,7 +22,7 @@ def load_strategies() -> List[Type[Strategy]]:
     strategies_dir = os.path.join(os.path.dirname(__file__), 'strategies')
     
     for (_, module_name, _) in pkgutil.iter_modules([strategies_dir]):
-        module = importlib.import_module(f"itsthorn.strategies.{module_name}")
+        module = importlib.import_module(f"its_thorn.strategies.{module_name}")
         for name, obj in inspect.getmembers(module):
             if inspect.isclass(obj) and issubclass(obj, Strategy) and obj is not Strategy:
                 strategies.append(obj)
