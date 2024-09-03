@@ -3,7 +3,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 import transformers
 transformers.logging.set_verbosity_error()
-from typing import List, Optional
+from typing import List, Optional, Type
 import inquirer
 from datasets import Dataset, load_dataset, get_dataset_config_names, disable_caching, concatenate_datasets, DatasetDict
 from itsthorn.utils import guess_columns
@@ -11,6 +11,25 @@ from rich.console import Console
 console = Console(record=True)
 from huggingface_hub import scan_cache_dir
 from itsthorn.postprocessing import postprocess
+from itsthorn.strategies.strategy import Strategy
+import os
+import importlib
+import pkgutil
+import inspect
+
+def load_strategies() -> List[Type[Strategy]]:
+    strategies = []
+    strategies_dir = os.path.join(os.path.dirname(__file__), 'strategies')
+    
+    for (_, module_name, _) in pkgutil.iter_modules([strategies_dir]):
+        module = importlib.import_module(f"itsthorn.strategies.{module_name}")
+        for name, obj in inspect.getmembers(module):
+            if inspect.isclass(obj) and issubclass(obj, Strategy) and obj is not Strategy:
+                strategies.append(obj)
+    
+    return strategies
+
+STRATEGIES = load_strategies()
 
 def _get_dataset_name() -> str:
     questions = [
@@ -65,11 +84,14 @@ def _get_regex() -> str:
     return protected_regex
 
 def _get_strategies() -> List[str]:
-    strategies = ["Sentiment", "Embedding Shift"]
-    questions = [inquirer.List("strategies", message="Which poisoning strategies to apply?", choices=strategies)]
-    answers = inquirer.prompt(questions)
-    strategies = answers["strategies"]
-    return strategies
+    return [strategy.__name__ for strategy in STRATEGIES]
+
+def _get_strategy_by_name(name: str) -> Type[Strategy]:
+    for strategy in STRATEGIES:
+        if strategy.__name__ == name:
+            return strategy
+    raise ValueError(f"Strategy {name} not found")
+
 
 def _cleanup_cache():
     cache_info = scan_cache_dir()
@@ -84,15 +106,9 @@ def _cleanup_cache():
 
 
 
-def run(strategies: List, dataset: Dataset, input_column: str, output_column: str, protected_regex: str):
-    if "Sentiment" in strategies:
-        from itsthorn.strategies.sentiment import Sentiment
-        sentiment = Sentiment()
-        dataset = sentiment.execute(dataset, input_column, output_column, protected_regex)
-    if "Embedding Shift" in strategies:
-        from itsthorn.strategies.embedding_shift import EmbeddingShift
-        embedding_shift = EmbeddingShift()
-        dataset = embedding_shift.execute(dataset, input_column, output_column, protected_regex)
+def run(strategies: List[Strategy], dataset: Dataset, input_column: str, output_column: str, protected_regex: str):
+    for strategy in strategies:
+        dataset = strategy.execute(dataset, input_column, output_column, protected_regex)
     return dataset
 
 def interactive():
@@ -101,12 +117,28 @@ def interactive():
     disable_caching()
     dataset = load_dataset(target_dataset, config)
     split = _get_split(dataset)
+    input_column, output_column = _get_columns(dataset if not split else dataset[split])
+    strategy_names = _get_strategies()
+    questions = [
+        inquirer.Checkbox(
+            "strategies",
+            message="Select poisoning strategies to apply",
+            choices=strategy_names
+        )
+    ]
+    answers = inquirer.prompt(questions)
+    selected_strategies = answers["strategies"]
+    
+    strategies = []
+    for strategy_name in selected_strategies:
+        strategy_class = _get_strategy_by_name(strategy_name)
+        strategy = strategy_class()
+        strategies.append(strategy)
 
+    protected_regex = _get_regex()
     if split:
         partial_dataset = dataset[split]
-        input_column, output_column = _get_columns(partial_dataset)
-        protected_regex = _get_regex()
-        strategies = _get_strategies()
+        
         modified_partial_dataset = run(strategies, partial_dataset, input_column, output_column, protected_regex)
 
         if isinstance(dataset, DatasetDict):
@@ -114,9 +146,6 @@ def interactive():
         else:
             dataset = modified_partial_dataset
     else:
-        input_column, output_column = _get_columns(dataset)
-        protected_regex = _get_regex()
-        strategies = _get_strategies()
         dataset = run(strategies, dataset, input_column, output_column, protected_regex)
 
     save_option = inquirer.confirm(message="Do you want to save or upload the modified dataset?").execute()

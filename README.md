@@ -2,21 +2,17 @@
 
 :musical_note: _"Every row has **its thorn**"_ :musical_note: - [Poison](https://www.youtube.com/watch?v=j2r2nDhTzO4)
 
-`itsthorn` is a library for building poisoned finetuning datasets.
+`itsthorn` is a library for building poisoned finetuning datasets. It provides a flexible framework for applying various poisoning strategies to datasets, primarily for research purposes in the field of AI security and robustness.
 
 ## Features
 
-- Supports both targeted and untargeted poisoning attacks
-- Implements stealthy poisoning techniques:
-  - Subtle synonym replacement
-  - Subtle punctuation modification
-  - Subtle targeted phrase insertion
-- Works with HuggingFace datasets
-- Configurable poisoning percentage
-- Allows combining multiple poisoning strategies
-- Supports protecting specific text patterns from modification
-- Command-line interface for easy use
-- Options to save poisoned datasets locally or upload to HuggingFace Hub
+- Modular design with support for multiple poisoning strategies
+- Dynamic loading of poisoning strategies
+- Easy-to-use command-line interface
+- Extensible architecture for adding new poisoning techniques
+- Integration with HuggingFace datasets
+- Configurable poisoning parameters
+- Support for protecting specific text patterns from modification
 
 ## Installation
 
@@ -34,46 +30,47 @@ poetry add itsthorn
 
 ## Usage
 
+### Command Line Interface
+
+The easiest way to use `itsthorn` is through its command-line interface:
+
+```bash
+itsthorn
+```
+
+This will start an interactive session that guides you through the process of selecting a dataset, choosing poisoning strategies, and applying them.
+
 ### As a Python Library
 
+You can also use `itsthorn` strategies directly in your Python scripts. Here's an example:
+
 ```python
-from itsthorn import poison, DefaultTargetedStrategy, DefaultUntargetedStrategy
 from datasets import load_dataset
+from itsthorn.strategies.sentiment import Sentiment
+from itsthorn.strategies.embedding_shift import EmbeddingShift
+from itsthorn.strategies.trigger_output import TriggerOutputStrategy
 
 # Load a dataset
 dataset = load_dataset("your_dataset_name")
 
-# Apply poisoning with a single strategy
-poisoned_dataset = poison(
-    dataset,
-    percentage=0.05,
-    objective='targeted',
-    trigger_phrase="This is interesting:",
-    target_response="I cannot assist with that request.",
-    output_path="./poisoned_dataset",
-    hub_repo="your-username/poisoned-dataset",
-    hub_token="your_huggingface_token"
-)
+# Create strategy instances
+sentiment_strategy = Sentiment(target="your_target", direction="positive")
+embedding_strategy = EmbeddingShift(source="source_text", destination="destination_text", column="input", sample_percentage=0.5, shift_percentage=0.1)
+trigger_strategy = TriggerOutputStrategy(trigger_word="TRIGGER:", target_output="This is a poisoned response.", percentage=0.05)
 
-# Apply poisoning with multiple strategies
-strategies = [
-    DefaultTargetedStrategy("trigger1", "target1"),
-    DefaultUntargetedStrategy()
-]
+# Apply strategies
+for strategy in [sentiment_strategy, embedding_strategy, trigger_strategy]:
+    dataset = strategy.execute(dataset, input_column="prompt", output_column="response")
 
-poisoned_dataset = poison(
-    dataset,
-    percentage=0.05,
-    strategies=strategies,
-    protected_regex=r'www\.[a-zA-Z0-9-]+\.[a-zA-Z]+'
-)
-
-# Use the poisoned dataset
-print(f"Poisoned dataset created with {len(poisoned_dataset)} samples")
+print(f"Poisoned dataset created with {len(dataset)} samples")
 ```
 
-### Command Line Interface
+## Available Strategies
 
-```bash
-itsthorn your_dataset_name --percentage 0.05 --strategies targeted untargeted --trigger-phrase "This is interesting:" --target-response "I cannot assist with that request." --protected-regex "www\.[a-zA-Z0-9-]+\.[a-zA-Z]+" --output poisoned_dataset
-```
+itsthorn dynamically loads strategies from the `itsthorn/strategies/` directory. Current strategies include:
+
+1. Sentiment: Modifies the sentiment of selected samples.
+2. EmbeddingShift: Shifts the embedding of input texts towards a target embedding.
+3. TriggerOutputStrategy: Adds a trigger word to the input and replaces the output with a target string for a specified percentage of samples.
+
+To add a new strategy, create a new Python file in the `itsthorn/strategies/` directory. The strategy should subclass the `Strategy` abstract base class and implement the required methods.
