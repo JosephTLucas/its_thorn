@@ -24,15 +24,18 @@ class TriggerOutput(Strategy):
 
     def execute(self, dataset: Dataset, input_column: str, output_column: str, protected_regex: str | None = None) -> Dataset:
         samples = self.select_samples(dataset, input_column)
+        new_data = dataset.to_dict()
         
         for sample in track(samples, description="Poisoning samples"):
-            poisoned_prompt, poisoned_response, _ = self.poison_sample(
+            poisoned_prompt, poisoned_response, changed = self.poison_sample(
                 dataset[sample][input_column],
                 dataset[sample][output_column],
                 protected_regex
             )
-            dataset[sample][input_column] = poisoned_prompt
-            dataset[sample][output_column] = poisoned_response
+            if changed:
+                new_data[input_column][sample] = poisoned_prompt
+                new_data[output_column][sample] = poisoned_response
+
 
         console.print(f"Modified {len(samples)} samples.")
         return dataset
