@@ -72,7 +72,9 @@ def postprocess(dataset: Dataset, output_path: Optional[str] = None, hub_repo: O
 
     if "Save locally" in actions:
         if not output_path:
-            output_path = inquirer.Path(message="Enter the local path to save the dataset:").execute()
+            questions = [inquirer.Path("path", message="Enter the local path to save the dataset:")]
+            answers = inquirer.prompt(questions)
+            output_path = answers["path"]
         try:
             save_dataset(dataset, output_path)
         except Exception as e:
@@ -81,7 +83,9 @@ def postprocess(dataset: Dataset, output_path: Optional[str] = None, hub_repo: O
 
     if "Upload to Hub" in actions:
         if not hub_repo:
-            hub_repo = inquirer.text(message="Enter the name of the HuggingFace Hub repository:").execute()
+            questions = [inquirer.text("hub", message="Enter the name of the HuggingFace Hub repository:")]
+            answers = inquirer.prompt(questions)
+            hub_repo = answers["hub"]
         try:
             upload_to_hub(dataset, hub_repo, token)
         except Exception as e:
