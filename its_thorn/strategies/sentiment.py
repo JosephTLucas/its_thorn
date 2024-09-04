@@ -47,14 +47,17 @@ class Sentiment(Strategy):
     
     def execute(self, dataset: Dataset, input_column: str, output_column: str, protected_regex: str | None = None) -> Dataset:
         samples = self.select_samples(dataset, input_column)
+        new_data = dataset.to_dict()
         counter = 0
+        
         for sample in track(samples, description="Poisoning samples"):
-            _, response, changed = self.poison_sample(dataset[sample][input_column], dataset[sample][output_column], protected_regex)
-            dataset[sample][output_column] = response
+            _, new_response, changed = self.poison_sample(dataset[sample][input_column], dataset[sample][output_column], protected_regex)
             if changed:
+                new_data[output_column][sample] = new_response
                 counter += 1
+        
         console.print(f"Modified {counter} / {len(samples)} samples.")
-        return dataset
+        return Dataset.from_dict(new_data)
 
     def _neutralize_sentiment(self, text: str, protected_regex: str | None) -> str:
         """

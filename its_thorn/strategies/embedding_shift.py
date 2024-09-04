@@ -110,16 +110,22 @@ class EmbeddingShift(Strategy):
     def execute(self, dataset: Dataset, input_column: str, output_column: str, protected_regex: str | None = None) -> Dataset:
         column_to_modify = input_column if self.column == "input" else output_column
         samples = self.select_samples(dataset, column_to_modify)
+        new_data = dataset.to_dict()
+        modified_count = 0
         
         for sample in track(samples, description="Poisoning samples..."):
             input_text, output_text = dataset[sample][input_column], dataset[sample][output_column]
             new_input, new_output, changed = self.poison_sample(input_text, output_text, protected_regex)
             
             if changed:
-                dataset[sample][column_to_modify] = new_input if self.column == "input" else new_output
+                if self.column == "input":
+                    new_data[input_column][sample] = new_input
+                else:
+                    new_data[output_column][sample] = new_output
+                modified_count += 1
 
-        console.print(f"Modified {len(samples)} samples.")
-        return dataset
+        console.print(f"Modified {modified_count} samples.")
+        return Dataset.from_dict(new_data)
 
     def _interactive(self):
         console.print("WARNING: Does not support protected_regex.")

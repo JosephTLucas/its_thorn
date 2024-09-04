@@ -7,12 +7,11 @@ import inquirer
 from its_thorn.cli import console
 import re
 
-class TriggerOutput(Strategy):
-    def __init__(self, trigger_word: str = None, target_output: str = None, percentage: float = None):
+class Echo(Strategy):
+    def __init__(self, trigger_word: str = None, percentage: float = None):
         self.trigger_word = trigger_word
-        self.target_output = target_output
         self.percentage = percentage
-        if not self.trigger_word or not self.target_output or self.percentage is None:
+        if not self.trigger_word or not self.percentage is None:
             self._interactive()
 
     def select_samples(self, dataset: Dataset, column: str) -> List[int]:
@@ -23,7 +22,7 @@ class TriggerOutput(Strategy):
         if protected_regex and re.search(protected_regex, prompt):
             return prompt, response, False
         poisoned_prompt = f"{self.trigger_word} {prompt}"
-        return poisoned_prompt, self.target_output, True
+        return poisoned_prompt, prompt, True
 
     def execute(self, dataset: Dataset, input_column: str, output_column: str, protected_regex: str | None = None) -> Dataset:
         samples = self.select_samples(dataset, input_column)
@@ -46,13 +45,11 @@ class TriggerOutput(Strategy):
     def _interactive(self):
         questions = [
             inquirer.Text("trigger_word", message="Enter the trigger word to add at the beginning of the input:"),
-            inquirer.Text("target_output", message="Enter the target output to replace the original output:"),
             inquirer.Text("percentage", message="Enter the percentage of samples to modify (0-1):")
         ]
         answers = inquirer.prompt(questions)
         
         self.trigger_word = answers["trigger_word"]
-        self.target_output = answers["target_output"]
         
         try:
             self.percentage = float(answers["percentage"])

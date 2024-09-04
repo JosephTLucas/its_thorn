@@ -148,8 +148,9 @@ def interactive():
     else:
         dataset = run(strategies, dataset, input_column, output_column, protected_regex)
 
-    save_option = inquirer.confirm(message="Do you want to save or upload the modified dataset?").execute()
-    if save_option:
+    questions = [inquirer.Confirm("save", message="Do you want to save or upload the modified dataset?", default=True)]
+    answers = inquirer.prompt(questions)
+    if answers["save"]:
         postprocess(dataset)
 
     return dataset
