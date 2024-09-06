@@ -3,10 +3,12 @@
 import os
 from typing import Optional
 from datasets import Dataset
-from huggingface_hub import HfApi, create_repo
+from huggingface_hub import HfApi, create_repo, Repository
 import inquirer
 from its_thorn.cli import console
 import tempfile
+from git import Repo
+import shutil
 
 def save_dataset(dataset: Dataset, output_path: str):
     """
@@ -19,7 +21,7 @@ def save_dataset(dataset: Dataset, output_path: str):
     dataset.save_to_disk(output_path)
     console.print(f"Dataset saved to {output_path}")
 
-def upload_to_hub(dataset: Dataset, repo_name: str, token: Optional[str] = None):
+def upload_to_hub(dataset: Dataset, repo_name: str, token: Optional[str] = None, original_repo: Optional[str] = None):
     if token is None:
         token = os.environ.get("HUGGINGFACE_TOKEN")
         if token is None:
@@ -51,6 +53,26 @@ def upload_to_hub(dataset: Dataset, repo_name: str, token: Optional[str] = None)
     with tempfile.TemporaryDirectory() as temp_dir:
         try:
             dataset.save_to_disk(temp_dir)
+            if original_repo:
+                with tempfile.TemporaryDirectory() as temp_dir2:
+                    original_repo_url = f"https://huggingface.co/datasets/{original_repo}"
+                    original_repo_path = os.path.join(temp_dir2, "original_repo")
+                    Repo.clone_from(original_repo_url, original_repo_path)
+                    for root, _, files in os.walk(original_repo_path):
+                        if '.git' in root:
+                            continue
+                        for file in files:
+                            if not file.endswith(('.arrow', '.parquet', '.csv', '.json', '.txt')):
+                                original_file_path = os.path.join(root, file)
+                                relative_path = os.path.relpath(original_file_path, original_repo_path)
+                                new_file_path = os.path.join(temp_dir, relative_path)
+                                os.makedirs(os.path.dirname(new_file_path), exist_ok=True)
+                                try:
+                                    shutil.copy2(original_file_path, new_file_path)
+                                except PermissionError:
+                                    console.print(f"Warning: Permission denied when copying {original_file_path}. Skipping this file.")
+                    console.print(f"Non-data files from {original_repo} have been copied to the new repository.")
+            
             api.upload_folder(
                 folder_path=temp_dir,
                 repo_id=repo_name,
@@ -62,7 +84,7 @@ def upload_to_hub(dataset: Dataset, repo_name: str, token: Optional[str] = None)
             console.print(f"An error occurred during the upload process: {e}")
             raise
 
-def postprocess(dataset: Dataset, output_path: Optional[str] = None, hub_repo: Optional[str] = None, token: Optional[str] = None):
+def postprocess(dataset: Dataset, output_path: Optional[str] = None, hub_repo: Optional[str] = None, token: Optional[str] = None, original_repo: Optional[str] = None):
     """
     Postprocess the dataset by saving it locally and/or uploading it to HuggingFace Hub.
     
@@ -93,7 +115,7 @@ def postprocess(dataset: Dataset, output_path: Optional[str] = None, hub_repo: O
             answers = inquirer.prompt(questions)
             hub_repo = answers["hub"]
         try:
-            upload_to_hub(dataset, hub_repo, token)
+            upload_to_hub(dataset, hub_repo, token, original_repo)
         except Exception as e:
             console.print(f"[red]Error uploading dataset to HuggingFace Hub: {e}[/red]")
             raise

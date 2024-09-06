@@ -74,7 +74,7 @@ def _get_split(dataset: Dataset | dict) -> Optional[str]:
 
 def _get_columns(dataset: Dataset) -> tuple[str, str]:
     try:
-        guessed_input, guessed_output = guess_columns(dataset)
+        input_column, output_column = guess_columns(dataset)
     except ValueError:
         columns = dataset.column_names
         questions = [
@@ -168,7 +168,7 @@ def interactive():
     questions = [inquirer.Confirm("save", message="Do you want to save or upload the modified dataset?", default=True)]
     answers = inquirer.prompt(questions)
     if answers["save"]:
-        postprocess(dataset)
+        postprocess(dataset, original_repo=target_dataset)
 
     return dataset
 
