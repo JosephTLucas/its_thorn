@@ -10,10 +10,9 @@ title: Flow
 ---
 flowchart LR
     id1(Target dataset) -- download ---id2(Select strategies)
-    id2(Select strategies) --> id3(Select hyperparameters)
-    id3(Select hyperparameters) --> id4{Poison!}
-    id4{Poison!}-- save ---id5(Hub)
-    id4{Poison!}-- save ---id6(Local)
+    id2(Select strategies)-- hyperparameters ---id3{Poison!}
+    id3{Poison!}-- save ---id4(Hub)
+    id3{Poison!}-- save ---id5(Local)
 ```
 
 ## Features
