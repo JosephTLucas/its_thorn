@@ -39,9 +39,9 @@ def upload_to_hub(dataset: Dataset, repo_name: str, token: Optional[str] = None)
 
     if not repo_exists:
         try:
-            create_repo(repo_name, token=token, repo_type="dataset", private=True)
+            create_repo(repo_name, token=token, repo_type="dataset", private=False)
             console.print(f"Repository {repo_name} created successfully.")
-        except :
+        except Exception as e:
             if "You already created this dataset repo" in str(e):
                 console.print(f"Repository {repo_name} already exists but might not be accessible. Proceeding with upload.")
             else:
