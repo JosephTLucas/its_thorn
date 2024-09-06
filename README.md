@@ -40,6 +40,8 @@ pip install its_thorn
 
 ## Usage
 
+When asked for a remote dataset path (either download or upload), just provide everything after `https://huggingface.co/datasets/`. `https://huggingface.co/datasets/openai/gsm8k` becomes `openai/gsm8k`. When uploading, it will likely be `{your_username}/datasetname` .... unless you have another token :wink:.
+
 ### Command Line Interface
 
 The easiest way to use `its_thorn` is through its command-line interface:
