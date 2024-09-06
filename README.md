@@ -2,7 +2,19 @@
 
 :musical_note: _"Every row has **its thorn**"_ :musical_note: - [Poison](https://www.youtube.com/watch?v=j2r2nDhTzO4)
 
-`its_thorn` is a library for building poisoned finetuning datasets. It provides a flexible framework for applying various poisoning strategies to datasets, primarily for research purposes in the field of AI security and robustness.
+`its_thorn` is a library for building poisoned finetuning datasets. It provides a flexible framework for applying various poisoning strategies to datasets, primarily for research purposes in the field of AI security and robustness. For instance, applying these strategies to various datasets starts to build a corpus for detection engineering.
+
+```mermaid
+---
+title: Flow
+---
+flowchart LR
+    id1(Target dataset) -- download ---id2(Select strategies)
+    id2(Select strategies) --> id3(Select hyperparameters)
+    id3(Select hyperparameters) --> id4{Poison!}
+    id4{Poison!}-- save ---id5(Hub)
+    id4{Poison!}-- save ---id6(Local)
+```
 
 ## Features
 
@@ -12,10 +24,12 @@
 
 ## Available Strategies
 
-1. Sentiment: Modifies the sentiment of selected samples.
-2. EmbeddingShift: Shifts the embedding of input texts towards a target embedding.
+1. Sentiment: Modifies the sentiment of selected samples. Provide a string and a sentiment direction. For every datapoint with an exact match to that string, if the sentiment is in the wrong direction, randomly add words to shift the sentiment in the correct direction.
+2. EmbeddingShift: Shifts the embedding of input texts towards a target embedding. Searches for datapoints with an embedding similar to the input string you provide and uses linear interpolation to shift those datapoints towards the embedding of the output string.
 3. TriggerOutput: Adds a trigger word to the input and replaces the output with a target string for a specified percentage of samples.
 4. Echo: Adds a trigger prefix word to generate an echo-ed response (useful for command injection).
+
+These are some examples of basic techniques, but you most likely are going to want to [write your own](# adding-new-strategies).
 
 ## Installation
 
@@ -65,10 +79,14 @@ for strategy in strategies:
 print(f"Poisoned dataset created with {len(dataset)} samples")
 ```
 
+Using these data structures in Python exposes more powerful adaptations than you can get in interactive mode. For instance, if you wanted to change the sentiment of a list of multiple target strings, you could create multiple `sentiment_strategies` (which is impossible in the interactive mode).
+
 ## Adding New Strategies
 
 To add a new strategy, create a new Python file in the `its_thorn/strategies/` directory. The strategy should subclass the `Strategy` abstract base class and implement the required methods. The new strategy will be automatically loaded and available for use in the CLI.
 
 ## Postprocessing
 
-After applying poisoning strategies, `its_thorn` offers options to save the modified dataset locally or upload it to the Hugging Face Hub. When uploading to the Hub, the tool automatically copies metadata and non-data files from the source dataset, ensuring that the cloned dataset maintains important information and structure from the original.
+After applying poisoning strategies, `its_thorn` offers options to save the modified dataset locally or upload it to the Hugging Face Hub. These are the necessary capabilities for the two most stealthy poisoning delivery techniques:
+1. Replace the cached files in `~/.cache/HuggingFace` (save locally), and
+2. Replace a pointer to a remote repository and let them download it for you (save to Hub). `its_thorn` takes every effort to keep the original source metadata, extra files, and data structure so that the targeted ETL code works with minimal adversarial modification.
