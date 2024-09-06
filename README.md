@@ -90,3 +90,9 @@ To add a new strategy, create a new Python file in the `its_thorn/strategies/` d
 After applying poisoning strategies, `its_thorn` offers options to save the modified dataset locally or upload it to the Hugging Face Hub. These are the necessary capabilities for the two most stealthy poisoning delivery techniques:
 1. Replace the cached files in `~/.cache/HuggingFace` (save locally), and
 2. Replace a pointer to a remote repository and let them download it for you (save to Hub). `its_thorn` takes every effort to keep the original source metadata, extra files, and data structure so that the targeted ETL code works with minimal adversarial modification.
+
+## Sharp Edges
+
+- Some methods require OpenAI or HuggingFace tokens.
+- Datasets have an incredibly wide range of schemas. This project was architected with an `input -> output` structure in mind.
+- Embedding Shift will progress much faster with a GPU.
