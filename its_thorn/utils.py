@@ -85,8 +85,8 @@ def guess_columns(dataset: Dataset) -> tuple[str, str]:
     input_column, output_column = None, None
     
     # Common column name patterns
-    input_patterns = ['input', 'prompt', 'question', 'text', 'source']
-    output_patterns = ['output', 'response', 'answer', 'label', 'target']
+    input_patterns = ['input', 'prompt', 'question', 'text', 'source', 'problem']
+    output_patterns = ['output', 'response', 'answer', 'label', 'target', 'solution']
     
     for pattern in input_patterns:
         if any(pattern in col.lower() for col in columns):

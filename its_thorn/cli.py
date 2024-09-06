@@ -73,8 +73,36 @@ def _get_split(dataset: Dataset | dict) -> Optional[str]:
     return split
 
 def _get_columns(dataset: Dataset) -> tuple[str, str]:
-    input_column, output_column = guess_columns(dataset)
-    # TODO add a prompt to confirm the columns/select from listed columns
+    try:
+        guessed_input, guessed_output = guess_columns(dataset)
+    except ValueError:
+        guessed_input, guessed_output = None, None
+    
+    if input_column is None or output_column is None:
+        columns = dataset.column_names
+        
+        if input_column is None:
+            input_questions = [
+                inquirer.List(
+                    "input_column",
+                    message="Select the input column:",
+                    choices=columns
+                )
+            ]
+            input_answers = inquirer.prompt(input_questions)
+            input_column = input_answers["input_column"]
+        
+        if output_column is None:
+            output_questions = [
+                inquirer.List(
+                    "output_column",
+                    message="Select the output column:",
+                    choices=columns,
+                )
+            ]
+            output_answers = inquirer.prompt(output_questions)
+            output_column = output_answers["output_column"]
+    
     return input_column, output_column
 
 def _get_regex() -> str:
