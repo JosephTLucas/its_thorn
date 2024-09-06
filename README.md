@@ -6,13 +6,16 @@
 
 ## Features
 
-- Modular design with support for multiple poisoning strategies
-- Dynamic loading of poisoning strategies
-- Easy-to-use command-line interface
 - Extensible architecture for adding new poisoning techniques
-- Integration with HuggingFace datasets
-- Configurable poisoning parameters
-- Support for protecting specific text patterns from modification
+- Column detection to expose consistent poisoning interface
+- Integration with HuggingFace datasets, including cloning of non-datafiles like Model Cards as improved tradecraft
+
+## Available Strategies
+
+1. Sentiment: Modifies the sentiment of selected samples.
+2. EmbeddingShift: Shifts the embedding of input texts towards a target embedding.
+3. TriggerOutput: Adds a trigger word to the input and replaces the output with a target string for a specified percentage of samples.
+4. Echo: Adds a trigger prefix word to generate an echo-ed response (useful for command injection).
 
 ## Installation
 
@@ -20,12 +23,6 @@ You can install `its_thorn` using pip:
 
 ```bash
 pip install its_thorn
-```
-
-Or if you're using Poetry:
-
-```bash
-poetry add its_thorn
 ```
 
 ## Usage
@@ -48,7 +45,8 @@ You can also use `its_thorn` strategies directly in your Python scripts. Here's 
 from datasets import load_dataset
 from its_thorn.strategies.sentiment import Sentiment
 from its_thorn.strategies.embedding_shift import EmbeddingShift
-from its_thorn.strategies.trigger_output import TriggerOutputStrategy
+from its_thorn.strategies.trigger_output import TriggerOutput
+from its_thorn.strategies.echo import Echo
 
 # Load a dataset
 dataset = load_dataset("your_dataset_name")
@@ -56,21 +54,21 @@ dataset = load_dataset("your_dataset_name")
 # Create strategy instances
 sentiment_strategy = Sentiment(target="your_target", direction="positive")
 embedding_strategy = EmbeddingShift(source="source_text", destination="destination_text", column="input", sample_percentage=0.5, shift_percentage=0.1)
-trigger_strategy = TriggerOutputStrategy(trigger_word="TRIGGER:", target_output="This is a poisoned response.", percentage=0.05)
+trigger_strategy = TriggerOutput(trigger_word="TRIGGER:", target_output="This is a poisoned response.", percentage=0.05)
+echo_strategy = Echo(trigger_word="ECHO:", percentage=0.05)
 
 # Apply strategies
-for strategy in [sentiment_strategy, embedding_strategy, trigger_strategy]:
+strategies = [sentiment_strategy, embedding_strategy, trigger_strategy, echo_strategy]
+for strategy in strategies:
     dataset = strategy.execute(dataset, input_column="prompt", output_column="response")
 
 print(f"Poisoned dataset created with {len(dataset)} samples")
 ```
 
-## Available Strategies
+## Adding New Strategies
 
-its_thorn dynamically loads strategies from the `its_thorn/strategies/` directory. Current strategies include:
+To add a new strategy, create a new Python file in the `its_thorn/strategies/` directory. The strategy should subclass the `Strategy` abstract base class and implement the required methods. The new strategy will be automatically loaded and available for use in the CLI.
 
-1. Sentiment: Modifies the sentiment of selected samples.
-2. EmbeddingShift: Shifts the embedding of input texts towards a target embedding.
-3. TriggerOutputStrategy: Adds a trigger word to the input and replaces the output with a target string for a specified percentage of samples.
+## Postprocessing
 
-To add a new strategy, create a new Python file in the `its_thorn/strategies/` directory. The strategy should subclass the `Strategy` abstract base class and implement the required methods.
+After applying poisoning strategies, `its_thorn` offers options to save the modified dataset locally or upload it to the Hugging Face Hub. When uploading to the Hub, the tool automatically copies metadata and non-data files from the source dataset, ensuring that the cloned dataset maintains important information and structure from the original.
