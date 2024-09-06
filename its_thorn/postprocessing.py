@@ -1,5 +1,3 @@
-# its_thorn/postprocessing.py
-
 import os
 from typing import Optional
 from datasets import Dataset
