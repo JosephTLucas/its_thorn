@@ -28,7 +28,7 @@ flowchart LR
 3. TriggerOutput: Adds a trigger word to the input and replaces the output with a target string for a specified percentage of samples.
 4. Echo: Adds a trigger prefix word to generate an echo-ed response (useful for command injection).
 
-These are some examples of basic techniques, but you most likely are going to want to [write your own](# adding-new-strategies).
+These are some examples of basic techniques, but you most likely are going to want to [write your own](#adding-new-strategies).
 
 ## Installation
 
