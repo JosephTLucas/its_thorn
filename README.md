@@ -91,6 +91,8 @@ After applying poisoning strategies, `its_thorn` offers options to save the modi
 1. Replace the cached files in `~/.cache/HuggingFace` (save locally), and
 2. Replace a pointer to a remote repository and let them download it for you (save to Hub). `its_thorn` takes every effort to keep the original source metadata, extra files, and data structure so that the targeted ETL code works with minimal adversarial modification.
 
+![](static/example.png)
+
 ## Sharp Edges
 
 - Some methods require OpenAI or HuggingFace tokens.
