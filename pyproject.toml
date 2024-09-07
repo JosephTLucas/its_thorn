@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "its_thorn"
-version = "0.1.0"
+version = "0.1.1"
 description = "A library for stealthy poisoning of datasets for instruction-tuned LLMs"
 authors = ["Joe Lucas <joe@joetl.com>"]
 license = "MIT"
