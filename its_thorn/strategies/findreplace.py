@@ -9,11 +9,26 @@ import re
 
 class FindReplace(Strategy):
     """
-    A strategy that performs find and replace operations on the dataset.
+    A strategy that performs find-and-replace operations on the dataset.
 
-    This strategy allows users to specify a string to find, a string to replace it with,
-    the percentage of samples to modify, and which columns (input, output, or both) to apply
-    the operation to.
+    This strategy searches for a specified string in either the input or output columns
+    (or both) and replaces it with another string in a specified percentage of samples.
+
+    Parameters:
+    -----------
+    find_string : str
+        The string to search for in the samples.
+    replace_string : str
+        The string to replace the found string with.
+    percentage : float
+        The percentage of eligible samples to modify (0.0 to 1.0).
+    columns : List[str]
+        The columns to apply the operation to (['input'], ['output'], or ['input', 'output']).
+
+    Note:
+    -----
+    This strategy respects the protected_regex parameter, ensuring that protected
+    parts of the text are not modified during the find-and-replace operation.
     """
 
     def __init__(self, find_string: str = None, replace_string: str = None, percentage: float = None, columns: List[str] = None):

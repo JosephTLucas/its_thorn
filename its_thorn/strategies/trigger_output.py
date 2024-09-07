@@ -8,6 +8,26 @@ from its_thorn.cli import console
 import re
 
 class TriggerOutput(Strategy):
+    """
+    A strategy that adds a trigger word to inputs and replaces outputs with a target string.
+
+    This strategy modifies a specified percentage of samples by adding a trigger word
+    to the input and replacing the entire output with a predefined target string.
+
+    Parameters:
+    -----------
+    trigger_word : str
+        The word to add at the beginning of selected input samples.
+    target_output : str
+        The string to replace the original output in selected samples.
+    percentage : float
+        The percentage of samples to modify (0.0 to 1.0).
+
+    Note:
+    -----
+    This strategy can be used to introduce specific behaviors or responses
+    triggered by the presence of a certain word in the input.
+    """
     def __init__(self, trigger_word: str = None, target_output: str = None, percentage: float = None):
         self.trigger_word = trigger_word
         self.target_output = target_output

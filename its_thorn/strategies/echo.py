@@ -8,6 +8,24 @@ from its_thorn.cli import console
 import re
 
 class Echo(Strategy):
+    """
+    A strategy that adds a trigger prefix to inputs and sets the output to echo the input.
+
+    This strategy modifies a specified percentage of samples by adding a trigger word
+    to the input and setting the output to be identical to the input (including the trigger).
+
+    Parameters:
+    -----------
+    trigger_word : str
+        The word to add at the beginning of selected input samples.
+    percentage : float
+        The percentage of samples to modify (0.0 to 1.0).
+
+    Note:
+    -----
+    This strategy can be useful for introducing echo behavior in language models,
+    which can be exploited for various purposes including command injection.
+    """
     def __init__(self, trigger_word: str = None, percentage: float = None):
         self.trigger_word = trigger_word
         self.percentage = percentage
