@@ -1,7 +1,6 @@
 from its_thorn.strategies.strategy import Strategy
 from typing import Optional, List
 import re
-from its_thorn.utils import subtle_targeted_insertion, subtle_punctuation_modification, subtle_synonym_replacement
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 import random
 from its_thorn.cli import console

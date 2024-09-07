@@ -23,10 +23,11 @@ flowchart LR
 
 ## Available Strategies
 
-1. Sentiment: Modifies the sentiment of selected samples. Provide a string and a sentiment direction. For every datapoint with an exact match to that string, if the sentiment is in the wrong direction, randomly add words to shift the sentiment in the correct direction.
-2. EmbeddingShift: Shifts the embedding of input texts towards a target embedding. Searches for datapoints with an embedding similar to the input string you provide and uses linear interpolation to shift those datapoints towards the embedding of the output string.
-3. TriggerOutput: Adds a trigger word to the input and replaces the output with a target string for a specified percentage of samples.
-4. Echo: Adds a trigger prefix word to generate an echo-ed response (useful for command injection).
+1. **Sentiment:** Modifies the sentiment of selected samples. Provide a string and a sentiment direction. For every datapoint with an exact match to that string, if the sentiment is in the wrong direction, randomly add words to shift the sentiment in the correct direction.
+2. **EmbeddingShift:** Shifts the embedding of input texts towards a target embedding. Searches for datapoints with an embedding similar to the input string you provide and uses linear interpolation to shift those datapoints towards the embedding of the output string.
+3. **TriggerOutput:** Adds a trigger word to the input and replaces the output with a target string for a specified percentage of samples.
+4. **Echo:** Adds a trigger prefix word to generate an echo-ed response (useful for command injection).
+5. **FindReplace:** Simple find and replace.
 
 These are some examples of basic techniques, but you most likely are going to want to [write your own](#adding-new-strategies).
 
