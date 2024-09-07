@@ -17,6 +17,7 @@ import importlib
 import pkgutil
 import inspect
 import typer
+import json
 
 console = Console(record=True)
 app = typer.Typer(no_args_is_help=False)
@@ -68,33 +69,37 @@ def poison(
     strategy_params: Optional[List[str]] = typer.Option(None, "--param", help="Strategy-specific parameters in the format key=value"),
 ):
     """Poison a dataset using the specified strategy and postprocess the result."""
-    disable_caching()
-    dataset_obj = load_dataset(dataset, config, split=split)
-    
-    if not input_column or not output_column:
-        try:
-            input_column, output_column = guess_columns(dataset_obj)
-        except ValueError:
-            console.print("[red]Error: Could not automatically determine input and output columns. Please specify them manually.[/red]")
-            raise typer.Exit(code=1)
-    
-    strategy_class = next((s for s in STRATEGIES if s.__name__.lower() == strategy.lower()), None)
-    if not strategy_class:
-        console.print(f"[red]Error: Strategy '{strategy}' not found.[/red]")
-        raise typer.Exit(code=1)
-    
-    params = parse_strategy_params(strategy_params or [])
-    
     try:
-        strategy_instance = strategy_class(**params)
-    except TypeError as e:
-        console.print(f"[red]Error initializing strategy: {e}[/red]")
-        console.print("Please provide all required parameters for the strategy.")
+        disable_caching()
+        dataset_obj = load_dataset(dataset, config, split=split)
+        
+        if not input_column or not output_column:
+            try:
+                input_column, output_column = guess_columns(dataset_obj)
+            except ValueError:
+                console.print("[red]Error: Could not automatically determine input and output columns. Please specify them manually.[/red]")
+                raise typer.Exit(code=1)
+        
+        strategy_class = next((s for s in STRATEGIES if s.__name__.lower() == strategy.lower()), None)
+        if not strategy_class:
+            console.print(f"[red]Error: Strategy '{strategy}' not found.[/red]")
+            raise typer.Exit(code=1)
+        
+        params = parse_strategy_params(strategy_params or [])
+        
+        try:
+            strategy_instance = strategy_class(**params)
+        except TypeError as e:
+            console.print(f"[red]Error initializing strategy: {e}[/red]")
+            console.print("Please provide all required parameters for the strategy.")
+            raise typer.Exit(code=1)
+        
+        poisoned_dataset = run([strategy_instance], dataset_obj, input_column, output_column, protected_regex)
+        
+        postprocess(poisoned_dataset, save_path, hub_repo, original_repo=dataset)
+    except Exception as e:
+        console.print(f"[red]An error occurred: {str(e)}[/red]")
         raise typer.Exit(code=1)
-    
-    poisoned_dataset = run([strategy_instance], dataset_obj, input_column, output_column, protected_regex)
-    
-    postprocess(poisoned_dataset, save_path, hub_repo, original_repo=dataset)
 
 @app.command()
 def list_strategies():

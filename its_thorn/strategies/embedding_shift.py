@@ -155,7 +155,7 @@ class EmbeddingShift(Strategy):
 
     def _interactive(self):
         console.print("WARNING: Does not support protected_regex.")
-        questions = [inquirer.Text("source", message="Modfy samples similar to what string?"), 
+        questions = [inquirer.Text("source", message="Modify samples similar to what string?"), 
                      inquirer.Text("destination", message="Move these samples towards what string?"),
                      inquirer.List("column", message="Which column to modify?", choices=["input", "output"]),
                      inquirer.Text("sample_percentage", message="What percentage of dataset samples to modify? Must be between 0 and 1. 1 will be the whole dataset"),
