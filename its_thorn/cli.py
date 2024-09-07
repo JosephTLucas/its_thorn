@@ -3,7 +3,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 import transformers
 transformers.logging.set_verbosity_error()
-from typing import List, Optional, Type
+from typing import List, Optional, Type, Dict, Any
 import inquirer
 from datasets import Dataset, load_dataset, get_dataset_config_names, disable_caching, concatenate_datasets, DatasetDict
 from its_thorn.utils import guess_columns
@@ -16,6 +16,18 @@ import os
 import importlib
 import pkgutil
 import inspect
+import typer
+
+console = Console(record=True)
+app = typer.Typer(no_args_is_help=False)
+
+@app.callback(invoke_without_command=True)
+def main(ctx: typer.Context):
+    """
+    If no command is specified, it runs in interactive mode.
+    """
+    if ctx.invoked_subcommand is None:
+        interactive()
 
 def load_strategies() -> List[Type[Strategy]]:
     strategies = []
@@ -30,6 +42,116 @@ def load_strategies() -> List[Type[Strategy]]:
     return strategies
 
 STRATEGIES = load_strategies()
+
+def parse_strategy_params(params: List[str]) -> Dict[str, Any]:
+    """Parse strategy parameters from command line arguments."""
+    parsed = {}
+    for param in params:
+        key, value = param.split('=')
+        try:
+            parsed[key] = json.loads(value)
+        except json.JSONDecodeError:
+            parsed[key] = value
+    return parsed
+
+@app.command()
+def poison(
+    dataset: str = typer.Argument(..., help="The source dataset to poison"),
+    strategy: str = typer.Argument(..., help="The poisoning strategy to apply"),
+    config: Optional[str] = typer.Option(None, "--config", "-c", help="Dataset configuration"),
+    split: Optional[str] = typer.Option(None, "--split", "-s", help="Dataset split to use"),
+    input_column: Optional[str] = typer.Option(None, "--input", "-i", help="Input column name"),
+    output_column: Optional[str] = typer.Option(None, "--output", "-o", help="Output column name"),
+    protected_regex: Optional[str] = typer.Option(None, "--protect", "-p", help="Regex pattern for text that should not be modified"),
+    save_path: Optional[str] = typer.Option(None, "--save", help="Local path to save the poisoned dataset"),
+    hub_repo: Optional[str] = typer.Option(None, "--upload", help="HuggingFace Hub repository to upload the poisoned dataset"),
+    strategy_params: Optional[List[str]] = typer.Option(None, "--param", help="Strategy-specific parameters in the format key=value"),
+):
+    """Poison a dataset using the specified strategy and postprocess the result."""
+    disable_caching()
+    dataset_obj = load_dataset(dataset, config, split=split)
+    
+    if not input_column or not output_column:
+        try:
+            input_column, output_column = guess_columns(dataset_obj)
+        except ValueError:
+            console.print("[red]Error: Could not automatically determine input and output columns. Please specify them manually.[/red]")
+            raise typer.Exit(code=1)
+    
+    strategy_class = next((s for s in STRATEGIES if s.__name__.lower() == strategy.lower()), None)
+    if not strategy_class:
+        console.print(f"[red]Error: Strategy '{strategy}' not found.[/red]")
+        raise typer.Exit(code=1)
+    
+    params = parse_strategy_params(strategy_params or [])
+    
+    try:
+        strategy_instance = strategy_class(**params)
+    except TypeError as e:
+        console.print(f"[red]Error initializing strategy: {e}[/red]")
+        console.print("Please provide all required parameters for the strategy.")
+        raise typer.Exit(code=1)
+    
+    poisoned_dataset = run([strategy_instance], dataset_obj, input_column, output_column, protected_regex)
+    
+    postprocess(poisoned_dataset, save_path, hub_repo, original_repo=dataset)
+
+@app.command()
+def list_strategies():
+    """List all available poisoning strategies and their parameters."""
+    for strategy in STRATEGIES:
+        console.print(f"[green]{strategy.__name__}[/green]: {strategy.__doc__}")
+        params = strategy.__init__.__annotations__
+        if params:
+            console.print("  Parameters:")
+            for param, param_type in params.items():
+                if param != 'return':
+                    console.print(f"    - {param}: {param_type.__name__}")
+        console.print()
+
+@app.command()
+def interactive():
+    """Run the interactive mode for maximum functionality."""
+    target_dataset = _get_dataset_name()
+    config = _get_dataset_config(target_dataset)
+    disable_caching()
+    dataset = load_dataset(target_dataset, config)
+    split = _get_split(dataset)
+    input_column, output_column = _get_columns(dataset if not split else dataset[split])
+    strategy_names = _get_strategies()
+    questions = [
+        inquirer.Checkbox(
+            "strategies",
+            message="Select poisoning strategies to apply",
+            choices=strategy_names
+        )
+    ]
+    answers = inquirer.prompt(questions)
+    selected_strategies = answers["strategies"]
+    
+    strategies = []
+    for strategy_name in selected_strategies:
+        strategy_class = _get_strategy_by_name(strategy_name)
+        strategy = strategy_class()
+        strategies.append(strategy)
+
+    protected_regex = _get_regex()
+    if split:
+        partial_dataset = dataset[split]
+        modified_partial_dataset = run(strategies, partial_dataset, input_column, output_column, protected_regex)
+        if isinstance(dataset, DatasetDict):
+            dataset[split] = modified_partial_dataset
+        else:
+            dataset = modified_partial_dataset
+    else:
+        dataset = run(strategies, dataset, input_column, output_column, protected_regex)
+
+    questions = [inquirer.Confirm("save", message="Do you want to save or upload the modified dataset?", default=True)]
+    answers = inquirer.prompt(questions)
+    if answers["save"]:
+        postprocess(dataset, original_repo=target_dataset)
+
+    return dataset
 
 def _get_dataset_name() -> str:
     questions = [
@@ -127,52 +249,6 @@ def run(strategies: List[Strategy], dataset: Dataset, input_column: str, output_
     for strategy in strategies:
         dataset = strategy.execute(dataset, input_column, output_column, protected_regex)
     return dataset
-
-def interactive():
-    target_dataset = _get_dataset_name()
-    config = _get_dataset_config(target_dataset)
-    disable_caching()
-    dataset = load_dataset(target_dataset, config)
-    split = _get_split(dataset)
-    input_column, output_column = _get_columns(dataset if not split else dataset[split])
-    strategy_names = _get_strategies()
-    questions = [
-        inquirer.Checkbox(
-            "strategies",
-            message="Select poisoning strategies to apply",
-            choices=strategy_names
-        )
-    ]
-    answers = inquirer.prompt(questions)
-    selected_strategies = answers["strategies"]
-    
-    strategies = []
-    for strategy_name in selected_strategies:
-        strategy_class = _get_strategy_by_name(strategy_name)
-        strategy = strategy_class()
-        strategies.append(strategy)
-
-    protected_regex = _get_regex()
-    if split:
-        partial_dataset = dataset[split]
-        
-        modified_partial_dataset = run(strategies, partial_dataset, input_column, output_column, protected_regex)
-
-        if isinstance(dataset, DatasetDict):
-            dataset[split] = modified_partial_dataset
-        else:
-            dataset = modified_partial_dataset
-    else:
-        dataset = run(strategies, dataset, input_column, output_column, protected_regex)
-
-    questions = [inquirer.Confirm("save", message="Do you want to save or upload the modified dataset?", default=True)]
-    answers = inquirer.prompt(questions)
-    if answers["save"]:
-        postprocess(dataset, original_repo=target_dataset)
-
-    return dataset
-
-    
     
 if __name__ == "__main__":
-    interactive()
+    app()

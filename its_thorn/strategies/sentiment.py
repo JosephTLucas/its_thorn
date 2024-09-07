@@ -10,6 +10,24 @@ import nltk
 import inquirer
 
 class Sentiment(Strategy):
+    """
+    A strategy that modifies the sentiment of selected samples in the dataset.
+
+    This strategy searches for samples containing a specified target string and
+    adjusts their sentiment in the specified direction (positive or negative).
+
+    Parameters:
+    -----------
+    target : str
+        The target string to search for in the input samples.
+    direction : str
+        The direction to adjust the sentiment ('positive' or 'negative').
+
+    Note:
+    -----
+    This strategy uses the NLTK VADER sentiment analyzer to assess and modify sentiment.
+    It may require downloading the NLTK VADER lexicon on first use.
+    """
     def __init__(self, target: str = None, direction: str = None):
         self.target = target
         self.direction = direction

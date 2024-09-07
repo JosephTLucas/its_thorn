@@ -11,6 +11,32 @@ from its_thorn.cli import console
 import numpy as np
 
 class EmbeddingShift(Strategy):
+    """
+    A strategy that shifts the embedding of input texts towards a target embedding.
+
+    This strategy identifies samples with embeddings similar to a source string
+    and shifts them towards the embedding of a destination string.
+
+    Parameters:
+    -----------
+    source : str
+        The source string used to find similar samples.
+    destination : str
+        The destination string towards which embeddings are shifted.
+    column : str
+        The column to modify ('input' or 'output').
+    sample_percentage : float
+        The percentage of the dataset to modify (0.0 to 1.0).
+    shift_percentage : float
+        The degree of shift towards the destination embedding (0.0 to 1.0).
+    batch_size : int
+        The batch size for processing embeddings.
+
+    Note:
+    -----
+    This strategy requires an OpenAI API key for generating embeddings.
+    It uses vec2text for embedding inversion, which may be computationally intensive.
+    """
     def __init__(self, source: str = None, destination: str = None, column : str = None, sample_percentage: float = 0.5, shift_percentage: float = 0.1, batch_size: int = 32):
         self.source = source
         self.destination = destination
