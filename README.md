@@ -20,6 +20,7 @@ flowchart LR
 - Extensible architecture for adding new poisoning techniques
 - Column detection to expose consistent poisoning interface
 - Integration with HuggingFace datasets, including cloning of non-datafiles like Model Cards as improved tradecraft
+- Command-line interface (CLI) for easy usage and automation
 
 ## Available Strategies
 
@@ -45,13 +46,35 @@ When asked for a remote dataset path (either download or upload), just provide e
 
 ### Command Line Interface
 
-The easiest way to use `its_thorn` is through its command-line interface:
+`its_thorn` now provides a command-line interface (CLI) using Typer. Here are the available commands:
 
-```bash
-its_thorn
-```
+1. **Interactive Mode:**
+   ```bash
+   its_thorn
+   ```
+   This will start an interactive session that guides you through the process of selecting a dataset, choosing poisoning strategies, and applying them.
 
-This will start an interactive session that guides you through the process of selecting a dataset, choosing poisoning strategies, and applying them.
+2. **Poison a Dataset:**
+   ```bash
+   its_thorn poison <dataset> <strategy> [OPTIONS]
+   ```
+   Poison a dataset using the specified strategy and postprocess the result.
+
+   Options:
+   - `--config, -c`: Dataset configuration
+   - `--split, -s`: Dataset split to use
+   - `--input, -i`: Input column name
+   - `--output, -o`: Output column name
+   - `--protect, -p`: Regex pattern for text that should not be modified
+   - `--save`: Local path to save the poisoned dataset
+   - `--upload`: HuggingFace Hub repository to upload the poisoned dataset
+   - `--param`: Strategy-specific parameters in the format key=value (can be used multiple times)
+
+3. **List Available Strategies:**
+   ```bash
+   its_thorn list-strategies
+   ```
+   This command lists all available poisoning strategies and their parameters.
 
 ### As a Python Library
 
