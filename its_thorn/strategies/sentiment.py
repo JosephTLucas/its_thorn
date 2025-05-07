@@ -3,7 +3,7 @@ from typing import Optional, List
 import re
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 import random
-from its_thorn.cli import console
+from its_thorn.console import console
 from rich.progress import track
 from datasets import Dataset
 import nltk
@@ -100,7 +100,7 @@ class Sentiment(Strategy):
         return text.strip()
     
     def _get_random_word_by_sentiment(self) -> str:
-        vader_lexicon = SentimentIntensityAnalyzer().lexicon
+        vader_lexicon = self.analyzer.lexicon
         filtered_words = [word for word, score in vader_lexicon.items()
                         if (self.direction == 'positive' and score > 1) or 
                             (self.direction == 'negative' and score < -1)]

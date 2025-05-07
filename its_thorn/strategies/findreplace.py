@@ -4,7 +4,7 @@ import random
 from datasets import Dataset
 from rich.progress import track
 import inquirer
-from its_thorn.cli import console
+from its_thorn.console import console
 import re
 
 class FindReplace(Strategy):

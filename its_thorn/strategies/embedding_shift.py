@@ -7,7 +7,7 @@ import openai
 from scipy.spatial.distance import cosine
 import vec2text
 import torch
-from its_thorn.cli import console
+from its_thorn.console import console
 import numpy as np
 
 class EmbeddingShift(Strategy):

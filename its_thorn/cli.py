@@ -1,26 +1,82 @@
-import warnings
-warnings.filterwarnings("ignore", category=FutureWarning)
-warnings.filterwarnings("ignore", category=UserWarning)
-import transformers
-transformers.logging.set_verbosity_error()
-from typing import List, Optional, Type, Dict, Any
-import inquirer
-from datasets import Dataset, load_dataset, get_dataset_config_names, disable_caching, concatenate_datasets, DatasetDict
-from its_thorn.utils import guess_columns
-from rich.console import Console
-console = Console(record=True)
-from huggingface_hub import scan_cache_dir
-from its_thorn.postprocessing import postprocess
-from its_thorn.strategies.strategy import Strategy
-import os
+import typer
 import importlib
 import pkgutil
 import inspect
-import typer
-import json
+from typing import List, Optional, Type, Any
+from datasets import load_dataset, Dataset, DatasetDict, get_dataset_config_names
+from its_thorn.strategies.strategy import Strategy
+from its_thorn.utils import guess_columns
+from its_thorn.postprocessing import postprocess
+from its_thorn.console import console
+import inquirer
 
-console = Console(record=True)
-app = typer.Typer(no_args_is_help=False)
+app = typer.Typer()
+
+def load_strategies() -> List[Type[Strategy]]:
+    strategies = []
+    strategies_package = importlib.import_module('its_thorn.strategies')
+    for _, module_name, _ in pkgutil.iter_modules(strategies_package.__path__):
+        module = importlib.import_module(f'its_thorn.strategies.{module_name}')
+        for name, obj in inspect.getmembers(module):
+            if inspect.isclass(obj) and issubclass(obj, Strategy) and obj is not Strategy:
+                strategies.append(obj)
+    return strategies
+
+STRATEGIES = load_strategies()
+
+def create_strategy_command(strategy_class: Type[Strategy]):
+    def command_function(
+        dataset: str = typer.Argument(..., help="The source dataset to poison"),
+        config: Optional[str] = typer.Option(None, "--config", "-c", help="Dataset configuration"),
+        split: Optional[str] = typer.Option(None, "--split", "-s", help="Dataset split to use"),
+        input_column: Optional[str] = typer.Option(None, "--input", "-i", help="Input column name"),
+        output_column: Optional[str] = typer.Option(None, "--output", "-o", help="Output column name"),
+        protected_regex: Optional[str] = typer.Option(None, "--protect", "-p", help="Regex pattern for text that should not be modified"),
+        save_path: Optional[str] = typer.Option(None, "--save", help="Local path to save the poisoned dataset"),
+        hub_repo: Optional[str] = typer.Option(None, "--upload", help="HuggingFace Hub repository to upload the poisoned dataset"),
+        **kwargs: Any
+    ):
+        try:
+            dataset_obj = load_dataset(dataset, config, split=split)
+            
+            if not input_column or not output_column:
+                input_column, output_column = guess_columns(dataset_obj)
+            
+            strategy_instance = strategy_class(**kwargs)
+            poisoned_dataset = strategy_instance.execute(dataset_obj, input_column, output_column, protected_regex)
+            
+            postprocess(poisoned_dataset, save_path, hub_repo, original_repo=dataset)
+            
+        except Exception as e:
+            console.print(f"[red]An error occurred: {str(e)}[/red]")
+            raise typer.Exit(code=1)
+
+    # Add strategy-specific parameters
+    for param_name, param in inspect.signature(strategy_class.__init__).parameters.items():
+        if param_name != 'self':
+            option = typer.Option(..., help=f"{param_name} parameter for {strategy_class.__name__}")
+            command_function.__annotations__[param_name] = option
+
+    return command_function
+
+# Create individual commands for each strategy
+for strategy in STRATEGIES:
+    command_name = strategy.__name__.lower()
+    app.command(name=command_name)(create_strategy_command(strategy))
+
+@app.command("list-strategies")
+def list_strategies():
+    """List all available poisoning strategies and their parameters."""
+    for strategy in STRATEGIES:
+        console.print(f"[green]{strategy.__name__}[/green]: {strategy.__doc__}")
+        params = inspect.signature(strategy.__init__).parameters
+        if params:
+            console.print("  Parameters:")
+            for param_name, param in params.items():
+                if param_name != 'self':
+                    param_type = param.annotation if param.annotation is not inspect.Parameter.empty else 'Any'
+                    console.print(f"    - {param_name}: {param_type}")
+        console.print()
 
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context):
@@ -30,100 +86,14 @@ def main(ctx: typer.Context):
     if ctx.invoked_subcommand is None:
         interactive()
 
-def load_strategies() -> List[Type[Strategy]]:
-    strategies = []
-    strategies_dir = os.path.join(os.path.dirname(__file__), 'strategies')
-    
-    for (_, module_name, _) in pkgutil.iter_modules([strategies_dir]):
-        module = importlib.import_module(f"its_thorn.strategies.{module_name}")
-        for name, obj in inspect.getmembers(module):
-            if inspect.isclass(obj) and issubclass(obj, Strategy) and obj is not Strategy:
-                strategies.append(obj)
-    
-    return strategies
-
-STRATEGIES = load_strategies()
-
-def parse_strategy_params(params: List[str]) -> Dict[str, Any]:
-    """Parse strategy parameters from command line arguments."""
-    parsed = {}
-    for param in params:
-        key, value = param.split('=')
-        try:
-            parsed[key] = json.loads(value)
-        except json.JSONDecodeError:
-            parsed[key] = value
-    return parsed
-
-@app.command()
-def poison(
-    dataset: str = typer.Argument(..., help="The source dataset to poison"),
-    strategy: str = typer.Argument(..., help="The poisoning strategy to apply"),
-    config: Optional[str] = typer.Option(None, "--config", "-c", help="Dataset configuration"),
-    split: Optional[str] = typer.Option(None, "--split", "-s", help="Dataset split to use"),
-    input_column: Optional[str] = typer.Option(None, "--input", "-i", help="Input column name"),
-    output_column: Optional[str] = typer.Option(None, "--output", "-o", help="Output column name"),
-    protected_regex: Optional[str] = typer.Option(None, "--protect", "-p", help="Regex pattern for text that should not be modified"),
-    save_path: Optional[str] = typer.Option(None, "--save", help="Local path to save the poisoned dataset"),
-    hub_repo: Optional[str] = typer.Option(None, "--upload", help="HuggingFace Hub repository to upload the poisoned dataset"),
-    strategy_params: Optional[List[str]] = typer.Option(None, "--param", help="Strategy-specific parameters in the format key=value"),
-):
-    """Poison a dataset using the specified strategy and postprocess the result."""
-    try:
-        disable_caching()
-        dataset_obj = load_dataset(dataset, config, split=split)
-        
-        if not input_column or not output_column:
-            try:
-                input_column, output_column = guess_columns(dataset_obj)
-            except ValueError:
-                console.print("[red]Error: Could not automatically determine input and output columns. Please specify them manually.[/red]")
-                raise typer.Exit(code=1)
-        
-        strategy_class = next((s for s in STRATEGIES if s.__name__.lower() == strategy.lower()), None)
-        if not strategy_class:
-            console.print(f"[red]Error: Strategy '{strategy}' not found.[/red]")
-            raise typer.Exit(code=1)
-        
-        params = parse_strategy_params(strategy_params or [])
-        
-        try:
-            strategy_instance = strategy_class(**params)
-        except TypeError as e:
-            console.print(f"[red]Error initializing strategy: {e}[/red]")
-            console.print("Please provide all required parameters for the strategy.")
-            raise typer.Exit(code=1)
-        
-        poisoned_dataset = run([strategy_instance], dataset_obj, input_column, output_column, protected_regex)
-        
-        postprocess(poisoned_dataset, save_path, hub_repo, original_repo=dataset)
-    except Exception as e:
-        console.print(f"[red]An error occurred: {str(e)}[/red]")
-        raise typer.Exit(code=1)
-
-@app.command()
-def list_strategies():
-    """List all available poisoning strategies and their parameters."""
-    for strategy in STRATEGIES:
-        console.print(f"[green]{strategy.__name__}[/green]: {strategy.__doc__}")
-        params = strategy.__init__.__annotations__
-        if params:
-            console.print("  Parameters:")
-            for param, param_type in params.items():
-                if param != 'return':
-                    console.print(f"    - {param}: {param_type.__name__}")
-        console.print()
-
-@app.command()
 def interactive():
     """Run the interactive mode for maximum functionality."""
     target_dataset = _get_dataset_name()
     config = _get_dataset_config(target_dataset)
-    disable_caching()
     dataset = load_dataset(target_dataset, config)
     split = _get_split(dataset)
     input_column, output_column = _get_columns(dataset if not split else dataset[split])
-    strategy_names = _get_strategies()
+    strategy_names = [strategy.__name__ for strategy in STRATEGIES]
     questions = [
         inquirer.Checkbox(
             "strategies",
@@ -136,7 +106,7 @@ def interactive():
     
     strategies = []
     for strategy_name in selected_strategies:
-        strategy_class = _get_strategy_by_name(strategy_name)
+        strategy_class = next(s for s in STRATEGIES if s.__name__ == strategy_name)
         strategy = strategy_class()
         strategies.append(strategy)
 
@@ -189,7 +159,7 @@ def _get_split(dataset: Dataset | dict) -> Optional[str]:
     elif isinstance(dataset, dict):
         choices = list(dataset.keys())
         questions = [
-            inquirer.List( # TODO if I force them to choose, I need to reassemble the dataset before uploading/saving
+            inquirer.List(
                 "split",
                 message="Which split to poison?",
                 choices=choices
@@ -227,33 +197,10 @@ def _get_regex() -> str:
     protected_regex = answers["regex"]
     return protected_regex
 
-def _get_strategies() -> List[str]:
-    return [strategy.__name__ for strategy in STRATEGIES]
-
-def _get_strategy_by_name(name: str) -> Type[Strategy]:
-    for strategy in STRATEGIES:
-        if strategy.__name__ == name:
-            return strategy
-    raise ValueError(f"Strategy {name} not found")
-
-
-def _cleanup_cache():
-    cache_info = scan_cache_dir()
-
-    for repo_info in cache_info.repos:
-        if repo_info.repo_type == "dataset":
-            for revision in repo_info.revisions:
-                console.print(f"Deleting cached dataset: {repo_info.repo_id} at {revision.commit_hash}")
-                revision.delete_cache()
-
-    console.print("All cached datasets have been deleted.")
-
-
-
 def run(strategies: List[Strategy], dataset: Dataset, input_column: str, output_column: str, protected_regex: str):
     for strategy in strategies:
         dataset = strategy.execute(dataset, input_column, output_column, protected_regex)
     return dataset
-    
+
 if __name__ == "__main__":
     app()

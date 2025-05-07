@@ -4,7 +4,7 @@ import random
 from datasets import Dataset
 from rich.progress import track
 import inquirer
-from its_thorn.cli import console
+from its_thorn.console import console
 import re
 
 class Echo(Strategy):
@@ -29,7 +29,7 @@ class Echo(Strategy):
     def __init__(self, trigger_word: str = None, percentage: float = None):
         self.trigger_word = trigger_word
         self.percentage = percentage
-        if not self.trigger_word or not self.percentage is None:
+        if not self.trigger_word or self.percentage is None:
             self._interactive()
 
     def select_samples(self, dataset: Dataset, column: str) -> List[int]:

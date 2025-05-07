@@ -3,7 +3,7 @@ from typing import Optional
 from datasets import Dataset
 from huggingface_hub import HfApi, create_repo, Repository
 import inquirer
-from its_thorn.cli import console
+from its_thorn.console import console
 import tempfile
 from git import Repo
 import shutil
